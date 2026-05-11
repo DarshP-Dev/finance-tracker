@@ -1,6 +1,7 @@
 package com.financetracker.backend.security;
 
 import com.financetracker.backend.entities.User;
+import jakarta.annotation.PostConstruct;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -9,6 +10,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,8 +43,6 @@ public class JwtService {
     }
 
     public String generateToken(User user) {
-        validateSecret();
-
         Instant now = Instant.now(clock);
         Map<String, Object> header = Map.of(
                 "alg", "HS256",
@@ -60,25 +60,35 @@ public class JwtService {
     }
 
     public String extractUsername(String token) {
-        return getClaims(token).get("sub").toString();
+        return extractClaim(token, "sub")
+                .map(Object::toString)
+                .orElse(null);
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
-        try {
-            Map<String, Object> claims = getClaims(token);
-            String subject = claims.get("sub").toString();
-            long expiresAt = ((Number) claims.get("exp")).longValue();
+        return parseClaims(token)
+                .map(claims -> isExpectedSubject(claims, userDetails) && !isExpired(claims))
+                .orElse(false);
+    }
 
-            return subject.equals(userDetails.getUsername())
-                    && Instant.now(clock).getEpochSecond() < expiresAt;
+    @PostConstruct
+    void validateConfiguration() {
+        validateSecret();
+    }
+
+    private Optional<Object> extractClaim(String token, String claimName) {
+        return parseClaims(token).map(claims -> claims.get(claimName));
+    }
+
+    private Optional<Map<String, Object>> parseClaims(String token) {
+        try {
+            return Optional.of(getClaims(token));
         } catch (RuntimeException exception) {
-            return false;
+            return Optional.empty();
         }
     }
 
     private Map<String, Object> getClaims(String token) {
-        validateSecret();
-
         String[] parts = token.split("\\.");
         if (parts.length != 3) {
             throw new IllegalArgumentException("Invalid JWT format");
@@ -96,6 +106,21 @@ public class JwtService {
         } catch (Exception exception) {
             throw new IllegalArgumentException("Invalid JWT payload", exception);
         }
+    }
+
+    private boolean isExpectedSubject(Map<String, Object> claims, UserDetails userDetails) {
+        Object subject = claims.get("sub");
+        return subject != null && subject.toString().equals(userDetails.getUsername());
+    }
+
+    private boolean isExpired(Map<String, Object> claims) {
+        Object expirationClaim = claims.get("exp");
+
+        if (!(expirationClaim instanceof Number expirationTime)) {
+            return true;
+        }
+
+        return Instant.now(clock).getEpochSecond() >= expirationTime.longValue();
     }
 
     private byte[] toJson(Map<String, Object> value) {

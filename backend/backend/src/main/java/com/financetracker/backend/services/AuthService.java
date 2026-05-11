@@ -6,6 +6,7 @@ import com.financetracker.backend.dto.RegisterRequest;
 import com.financetracker.backend.entities.User;
 import com.financetracker.backend.repositories.UserRepository;
 import com.financetracker.backend.security.JwtService;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -27,17 +28,20 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
+        String email = normalizeEmail(request.getEmail());
+        String username = request.getUsername().trim();
+
+        if (userRepository.existsByEmail(email)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already registered");
         }
 
-        if (userRepository.existsByUsername(request.getUsername())) {
+        if (userRepository.existsByUsername(username)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username is already taken");
         }
 
         User user = User.builder()
-                .username(request.getUsername())
-                .email(request.getEmail())
+                .username(username)
+                .email(email)
                 .password(passwordEncoder.encode(request.getPassword()))
                 .build();
 
@@ -47,15 +51,17 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
+        String email = normalizeEmail(request.getEmail());
+
         try {
             authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                    new UsernamePasswordAuthenticationToken(email, request.getPassword())
             );
         } catch (BadCredentialsException exception) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password", exception);
         }
 
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
 
         return buildAuthResponse(user);
@@ -69,5 +75,9 @@ public class AuthService {
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .build();
+    }
+
+    private String normalizeEmail(String email) {
+        return email.toLowerCase(Locale.ROOT).trim();
     }
 }
