@@ -1,6 +1,8 @@
 package com.financetracker.backend.entities;
 
 public enum TransactionCategory {
+    FOOD,
+    RENT,
     HOUSING,
     UTILITIES,
     GROCERIES,
@@ -11,6 +13,7 @@ public enum TransactionCategory {
     DEBT_PAYMENT,
     ENTERTAINMENT,
     SHOPPING,
+    HEALTH,
     EDUCATION,
     TRAVEL,
     SALARY,
