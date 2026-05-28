@@ -8,20 +8,24 @@ type SummaryCardProps = {
 };
 
 const toneStyles = {
-  income: "border-[#b7e4c7] bg-[#f0fdf4] text-[#027a48]",
-  expense: "border-[#fed7aa] bg-[#fff7ed] text-[#c2410c]",
-  savings: "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]",
-  investment: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6d28d9]",
+  income: "bg-[#fff3ed] text-[#ff5a1f]",
+  expense: "bg-[#fff3ed] text-[#ff5a1f]",
+  savings: "bg-[#edf8f1] text-[#22935f]",
+  investment: "bg-[#f4f1ff] text-[#7557d8]",
 };
 
 export function SummaryCard({ label, value, helper, tone }: SummaryCardProps) {
   return (
-    <div className="rounded-lg border border-[#d9e1ec] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-semibold ${toneStyles[tone]}`}>
-        {label}
+    <div className="rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-3">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-black ${toneStyles[tone]}`}>
+          {label.slice(0, 1)}
+        </div>
+        <button className="text-lg leading-none text-[#19171c]">...</button>
       </div>
-      <div className="mt-4 text-2xl font-semibold text-[#172033]">{value}</div>
-      <div className="mt-1 text-sm text-[#667085]">{helper}</div>
+      <div className="mt-3 text-sm font-semibold text-[#151515]">{label}</div>
+      <div className="mt-4 text-[26px] font-semibold leading-none text-[#151515]">{value}</div>
+      <div className="mt-3 text-xs text-[#77717d]">{helper}</div>
     </div>
   );
 }

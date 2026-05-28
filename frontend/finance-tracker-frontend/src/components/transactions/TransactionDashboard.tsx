@@ -139,27 +139,25 @@ export function TransactionDashboard({ auth, onSignOut }: TransactionDashboardPr
   }
 
   return (
-    <main className="min-h-screen bg-[#f5f7fb] text-[#172033]">
-      <DashboardHeader
-        auth={auth}
-        activeView={activeView}
-        onViewChange={setActiveView}
-        onSignOut={handleSignOut}
-      />
-
+    <DashboardHeader
+      auth={auth}
+      activeView={activeView}
+      onViewChange={setActiveView}
+      onSignOut={handleSignOut}
+    >
       {activeView === "dashboard" ? (
         <DashboardOverview />
       ) : (
-        <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[360px_1fr]">
-          <aside className="self-start rounded-lg border border-[#d9e1ec] bg-white p-4 shadow-sm">
+        <div className="grid gap-5 py-6 lg:grid-cols-[360px_1fr]">
+          <aside className="self-start rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
             <div className="mb-4">
               <h2 className="text-lg font-semibold">Add Transaction</h2>
             </div>
             <TransactionForm isSubmitting={isSubmitting} onSubmit={handleCreate} />
           </aside>
 
-          <section className="min-w-0 overflow-hidden rounded-lg border border-[#d9e1ec] bg-white shadow-sm">
-            <div className="grid border-b border-[#dfe7f1] md:grid-cols-3">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm">
+            <div className="grid border-b border-[#eeeaf1] md:grid-cols-3">
               <SummaryCell label="Income" value={formatCurrency(summary.income)} tone="income" />
               <SummaryCell label="Expenses" value={formatCurrency(summary.expenses)} tone="expense" />
               <SummaryCell label="Net" value={formatCurrency(net)} tone={net >= 0 ? "income" : "expense"} />
@@ -195,7 +193,7 @@ export function TransactionDashboard({ auth, onSignOut }: TransactionDashboardPr
 
       {editingTransaction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/45 p-4">
-          <div className="w-full max-w-lg border border-[#d9e1ec] bg-white p-5 shadow-xl">
+          <div className="w-full max-w-lg rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between gap-4">
               <h2 className="text-lg font-semibold">Edit Transaction</h2>
               <Button type="button" variant="ghost" className="h-8 px-3" onClick={() => setEditingTransaction(null)}>
@@ -212,7 +210,7 @@ export function TransactionDashboard({ auth, onSignOut }: TransactionDashboardPr
           </div>
         </div>
       )}
-    </main>
+    </DashboardHeader>
   );
 }
 

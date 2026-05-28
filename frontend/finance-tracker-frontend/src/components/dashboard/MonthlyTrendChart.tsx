@@ -1,6 +1,6 @@
 "use client";
 
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { formatCurrency } from "@/components/transactions/formatters";
 import type { MonthlySpending } from "@/types/dashboard";
@@ -16,16 +16,22 @@ export function MonthlyTrendChart({ data }: MonthlyTrendChartProps) {
   }));
 
   return (
-    <ChartCard title="Monthly Spending Trend" description="Expense movement over time" isEmpty={chartData.length === 0}>
+    <ChartCard title="Analytics" description="Expense movement over time" isEmpty={chartData.length === 0}>
       <div className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="#e7edf5" vertical={false} />
-            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#667085", fontSize: 12 }} />
-            <YAxis tickLine={false} axisLine={false} tick={{ fill: "#667085", fontSize: 12 }} tickFormatter={(value) => `$${value}`} />
+          <AreaChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="spendingGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#ff5a1f" stopOpacity={0.34} />
+                <stop offset="95%" stopColor="#ff5a1f" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="#eee8e2" strokeDasharray="2 4" vertical={false} />
+            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#77717d", fontSize: 12 }} />
+            <YAxis hide tickFormatter={(value) => `$${value}`} />
             <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-            <Line type="monotone" dataKey="spending" stroke="#195b4d" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-          </LineChart>
+            <Area type="monotone" dataKey="spending" stroke="#ff5a1f" strokeWidth={3} fill="url(#spendingGradient)" />
+          </AreaChart>
         </ResponsiveContainer>
       </div>
     </ChartCard>

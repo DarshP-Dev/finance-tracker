@@ -38,15 +38,15 @@ export function DashboardOverview() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6">
+      <div className="grid gap-5 py-6">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="h-[138px] animate-pulse rounded-lg border border-[#d9e1ec] bg-white shadow-sm" />
+            <div key={index} className="h-[160px] animate-pulse rounded-2xl border border-[#e4e0e7] bg-white shadow-sm" />
           ))}
         </div>
         <div className="grid gap-5 xl:grid-cols-2">
-          <div className="h-[360px] animate-pulse rounded-lg border border-[#d9e1ec] bg-white shadow-sm" />
-          <div className="h-[360px] animate-pulse rounded-lg border border-[#d9e1ec] bg-white shadow-sm" />
+          <div className="h-[360px] animate-pulse rounded-2xl border border-[#e4e0e7] bg-white shadow-sm" />
+          <div className="h-[360px] animate-pulse rounded-2xl border border-[#e4e0e7] bg-white shadow-sm" />
         </div>
       </div>
     );
@@ -54,8 +54,8 @@ export function DashboardOverview() {
 
   if (!dashboard) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
-        <div className="rounded-lg border border-[#d9e1ec] bg-white p-6 text-sm text-[#667085] shadow-sm">
+      <div className="py-6">
+        <div className="rounded-2xl border border-[#e4e0e7] bg-white p-6 text-sm text-[#77717d] shadow-sm">
           {message || "Dashboard data is unavailable."}
         </div>
       </div>
@@ -63,23 +63,38 @@ export function DashboardOverview() {
   }
 
   return (
-    <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6">
+    <div className="grid gap-5 py-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-normal text-[#151515]">Good Morning, Vadelz</h1>
+          <p className="mt-2 text-sm text-[#77717d]">This is your finance report.</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button className="h-11 rounded-xl border border-[#e4e0e7] bg-white px-4 text-sm font-semibold text-[#151515] shadow-sm">
+            August 2024 - December 2024
+          </button>
+          <button className="h-11 rounded-xl bg-[#15151b] px-5 text-sm font-semibold text-white shadow-sm">
+            Filters
+          </button>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Total Income" value={formatCurrency(dashboard.summary.totalIncome)} helper="All recorded income" tone="income" />
-        <SummaryCard label="Total Expenses" value={formatCurrency(dashboard.summary.totalExpenses)} helper="All recorded expenses" tone="expense" />
-        <SummaryCard label="Total Savings" value={formatCurrency(dashboard.summary.totalSavings)} helper="Income minus expenses" tone="savings" />
-        <SummaryCard label="Investment Value" value={formatCurrency(dashboard.summary.investmentValue)} helper="Shares at purchase value" tone="investment" />
+        <SummaryCard label="Income" value={formatCurrency(dashboard.summary.totalIncome)} helper="You made an extra income this month" tone="income" />
+        <SummaryCard label="Expenses" value={formatCurrency(dashboard.summary.totalExpenses)} helper="You overspent against planned budget" tone="expense" />
+        <SummaryCard label="My Balance" value={formatCurrency(dashboard.summary.totalSavings)} helper="Income minus expenses" tone="savings" />
+        <SummaryCard label="Investments" value={formatCurrency(dashboard.summary.investmentValue)} helper="Shares at purchase value" tone="investment" />
       </div>
 
       {message && (
-        <div className="rounded-lg border border-[#d9e1ec] bg-white px-4 py-3 text-sm text-[#344054] shadow-sm">
+        <div className="rounded-2xl border border-[#e4e0e7] bg-white px-4 py-3 text-sm text-[#46404b] shadow-sm">
           {message}
         </div>
       )}
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <SpendingPieChart data={dashboard.categorySpending} />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <MonthlyTrendChart data={dashboard.monthlySpending} />
+        <SpendingPieChart data={dashboard.categorySpending} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
