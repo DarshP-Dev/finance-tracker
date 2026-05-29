@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -20,8 +20,18 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
-  const [auth, setAuth] = useState<AuthResponse | null>(() => getStoredAuth());
+  const [auth, setAuth] = useState<AuthResponse | null>(null);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setAuth(getStoredAuth());
+      setHasHydrated(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,6 +58,10 @@ export default function Home() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (!hasHydrated) {
+    return <main className="min-h-screen bg-[#f5f7fb]" />;
   }
 
   if (auth) {

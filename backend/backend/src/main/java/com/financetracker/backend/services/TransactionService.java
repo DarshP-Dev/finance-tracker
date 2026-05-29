@@ -36,7 +36,7 @@ public class TransactionService {
         Transaction transaction = Transaction.builder()
                 .user(user)
                 .amount(request.getAmount())
-                .category(request.getCategory())
+                .category(toPersistableCategory(request.getCategory()))
                 .type(request.getType())
                 .description(normalizeBlank(request.getDescription()))
                 .date(request.getDate())
@@ -78,7 +78,7 @@ public class TransactionService {
         Transaction transaction = getOwnedTransaction(transactionId, user.getId());
 
         transaction.setAmount(request.getAmount());
-        transaction.setCategory(request.getCategory());
+        transaction.setCategory(toPersistableCategory(request.getCategory()));
         transaction.setType(request.getType());
         transaction.setDescription(normalizeBlank(request.getDescription()));
         transaction.setDate(request.getDate());
@@ -171,6 +171,15 @@ public class TransactionService {
         }
 
         return value.trim();
+    }
+
+    private TransactionCategory toPersistableCategory(TransactionCategory category) {
+        return switch (category) {
+            case FOOD -> TransactionCategory.DINING;
+            case RENT -> TransactionCategory.HOUSING;
+            case HEALTH -> TransactionCategory.HEALTHCARE;
+            default -> category;
+        };
     }
 
     private TransactionResponse toResponse(Transaction transaction) {

@@ -24,3 +24,72 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.dark-shell,
+.dark-shell * {
+  border-color: #343139;
+}
+
+.dark-shell {
+  color: #f7f2ee;
+}
+
+.dark-shell .bg-white,
+.dark-shell [class*="bg-white"] {
+  background-color: #252529 !important;
+}
+
+.dark-shell .bg-\[\#fbfbfc\],
+.dark-shell .bg-\[\#f8fafc\],
+.dark-shell .bg-\[\#fffaf7\],
+.dark-shell .bg-\[\#fff7f2\],
+.dark-shell .bg-\[\#fff3ed\],
+.dark-shell .bg-\[\#f5f7fb\],
+.dark-shell .bg-\[\#edf8f1\],
+.dark-shell .bg-\[\#f4f1ff\] {
+  background-color: #252529 !important;
+}
+
+.dark-shell .text-\[\#151515\],
+.dark-shell .text-\[\#172033\],
+.dark-shell .text-\[\#19171c\],
+.dark-shell .text-\[\#46404b\],
+.dark-shell .text-\[\#344054\] {
+  color: #f7f2ee !important;
+}
+
+.dark-shell .text-\[\#667085\],
+.dark-shell .text-\[\#74707a\],
+.dark-shell .text-\[\#77717d\],
+.dark-shell .text-\[\#8d8792\],
+.dark-shell .text-\[\#86818c\] {
+  color: #d8cec8 !important;
+}
+
+.dark-shell h1,
+.dark-shell h2,
+.dark-shell h3,
+.dark-shell .font-semibold {
+  color: #ff8a3d !important;
+}
+
+.dark-shell input,
+.dark-shell select {
+  background-color: #1b1b1f !important;
+  border-color: #3b3740 !important;
+  color: #f7f2ee !important;
+}
+
+.dark-shell input::placeholder {
+  color: #c46b3c !important;
+}
+
+.dark-shell button:hover {
+  background-color: #302824;
+}
+
+.dark-shell .shadow-sm,
+.dark-shell .shadow-md,
+.dark-shell .shadow-xl {
+  box-shadow: none;
+}

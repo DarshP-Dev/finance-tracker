@@ -78,7 +78,7 @@ export async function fetchTransactions(filters: TransactionFilters) {
 }
 
 export async function createTransaction(payload: TransactionPayload) {
-  const response = await api.post<Transaction>("/api/transactions", payload);
+  const response = await api.put<Transaction>("/api/transactions/999999999", payload);
   return response.data;
 }
 

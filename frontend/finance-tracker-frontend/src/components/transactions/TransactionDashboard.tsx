@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { SettingsPage } from "@/components/settings/SettingsPage";
 import { Button } from "@/components/ui/button";
 import { DateFilter } from "@/components/transactions/DateFilter";
 import { formatCurrency } from "@/components/transactions/formatters";
@@ -16,6 +17,7 @@ import {
   updateTransaction,
   type AuthResponse,
 } from "@/lib/api";
+import type { AppView } from "@/types/navigation";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
 
 type TransactionDashboardProps = {
@@ -24,7 +26,8 @@ type TransactionDashboardProps = {
 };
 
 export function TransactionDashboard({ auth, onSignOut }: TransactionDashboardProps) {
-  const [activeView, setActiveView] = useState<"dashboard" | "transactions">("dashboard");
+  const [activeView, setActiveView] = useState<AppView>("dashboard");
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -142,11 +145,14 @@ export function TransactionDashboard({ auth, onSignOut }: TransactionDashboardPr
     <DashboardHeader
       auth={auth}
       activeView={activeView}
+      isDarkMode={isDarkMode}
       onViewChange={setActiveView}
       onSignOut={handleSignOut}
     >
       {activeView === "dashboard" ? (
-        <DashboardOverview />
+        <DashboardOverview auth={auth} />
+      ) : activeView === "settings" ? (
+        <SettingsPage auth={auth} isDarkMode={isDarkMode} onDarkModeChange={setIsDarkMode} />
       ) : (
         <div className="grid gap-5 py-6 lg:grid-cols-[360px_1fr]">
           <aside className="self-start rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
