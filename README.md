@@ -9,9 +9,22 @@ cd backend/backend
 .\start-dev.ps1
 ```
 
-The script creates a random development JWT secret in the Git-ignored
-`.local/jwt-secret` file and reuses it across restarts. An existing `JWT_SECRET`
-environment variable takes precedence. Use a separately managed secret in production.
+The first run prompts for the local PostgreSQL password and stores it with Windows
+user-bound encryption in the Git-ignored `.local` directory. The script also creates
+a random development JWT secret and reuses it across restarts. Existing `DB_PASSWORD`
+and `JWT_SECRET` environment variables take precedence.
+
+The backend reads deployment configuration from environment variables:
+
+- `DB_URL` (defaults to the local `finance_tracker_db` database)
+- `DB_USERNAME` (defaults to `postgres` for local development)
+- `DB_PASSWORD` (required)
+- `JWT_SECRET` (required when the development script is not used)
+- `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3000`)
+- `DB_DDL_AUTO`, `JPA_SHOW_SQL`, and `JPA_FORMAT_SQL` (optional)
+
+Use separately managed secrets in production and set `DB_DDL_AUTO=validate` after
+introducing database migrations.
 
 In a second terminal, start the frontend:
 
