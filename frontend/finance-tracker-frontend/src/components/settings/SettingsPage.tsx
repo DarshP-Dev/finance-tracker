@@ -1,36 +1,90 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import type { ReactNode } from "react";
-import { Bell, LockKeyhole, Moon, Palette, UserRound } from "lucide-react";
+import { Bell, CheckCircle2, LockKeyhole, Moon, Palette, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { AuthResponse } from "@/lib/api";
+import {
+  changePassword,
+  updateProfile,
+  verifyCurrentPassword,
+  type AuthResponse,
+} from "@/lib/api";
 
 type SettingsPageProps = {
   auth: AuthResponse;
   isDarkMode: boolean;
+  onAuthChange: (auth: AuthResponse) => void;
   onDarkModeChange: (enabled: boolean) => void;
 };
 
-export function SettingsPage({ auth, isDarkMode, onDarkModeChange }: SettingsPageProps) {
+export function SettingsPage({ auth, isDarkMode, onAuthChange, onDarkModeChange }: SettingsPageProps) {
+  const [username, setUsername] = useState(auth.username);
+  const [email, setEmail] = useState(auth.email);
+  const [profilePassword, setProfilePassword] = useState("");
+  const [profileMessage, setProfileMessage] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
-  const [isPasswordUnlocked, setIsPasswordUnlocked] = useState(false);
+  const [isPasswordVerified, setIsPasswordVerified] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
-  function handleUnlockPassword() {
-    if (!currentPassword.trim()) {
-      setPasswordMessage("Enter your current password to unlock password changes.");
+  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setProfileMessage("");
+
+    if (!profilePassword) {
+      setProfileMessage("Enter your current password to save profile changes.");
       return;
     }
 
-    setIsPasswordUnlocked(true);
-    setPasswordMessage("Password change options unlocked.");
+    setIsSavingProfile(true);
+    try {
+      const updatedAuth = await updateProfile({
+        username: username.trim(),
+        email: email.trim(),
+        currentPassword: profilePassword,
+      });
+      onAuthChange(updatedAuth);
+      setProfilePassword("");
+      setProfileMessage("Profile updated.");
+    } catch (error) {
+      setProfileMessage(getErrorMessage(error));
+    } finally {
+      setIsSavingProfile(false);
+    }
   }
 
-  function handlePasswordSubmit() {
+  async function handleVerifyPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordMessage("");
+
+    if (!currentPassword) {
+      setPasswordMessage("Enter your current password.");
+      return;
+    }
+
+    setIsVerifyingPassword(true);
+    try {
+      await verifyCurrentPassword(currentPassword);
+      setIsPasswordVerified(true);
+      setPasswordMessage("Current password verified.");
+    } catch (error) {
+      setIsPasswordVerified(false);
+      setPasswordMessage(getErrorMessage(error));
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  }
+
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordMessage("");
+
     if (newPassword.length < 8) {
       setPasswordMessage("New password must be at least 8 characters.");
       return;
@@ -41,8 +95,30 @@ export function SettingsPage({ auth, isDarkMode, onDarkModeChange }: SettingsPag
       return;
     }
 
-    setPasswordMessage("Password change ready. Backend password update endpoint can be connected next.");
+    setIsSavingPassword(true);
+    try {
+      await changePassword({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setIsPasswordVerified(false);
+      setPasswordMessage("Password changed successfully.");
+    } catch (error) {
+      setPasswordMessage(getErrorMessage(error));
+    } finally {
+      setIsSavingPassword(false);
+    }
   }
+
+  function resetPasswordVerification() {
+    setIsPasswordVerified(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordMessage("");
+  }
+
+  const profileIsUnchanged = username.trim() === auth.username && email.trim().toLowerCase() === auth.email.toLowerCase();
 
   return (
     <div className="grid gap-5 py-6">
@@ -53,69 +129,119 @@ export function SettingsPage({ auth, isDarkMode, onDarkModeChange }: SettingsPag
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-sm">
-          <SectionHeader icon={<UserRound size={18} />} title="Profile" description="Your account identity" />
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <SectionHeader icon={<UserRound size={18} />} title="Profile" description="Update your account identity" />
+          <form onSubmit={handleProfileSubmit} className="mt-5 grid gap-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
+                Account name
+                <Input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  minLength={3}
+                  maxLength={50}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
+                Email
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  maxLength={255}
+                  autoComplete="email"
+                  required
+                />
+              </label>
+            </div>
             <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
-              Account name
-              <Input value={auth.username} readOnly />
+              Confirm with current password
+              <Input
+                type="password"
+                value={profilePassword}
+                onChange={(event) => setProfilePassword(event.target.value)}
+                maxLength={128}
+                autoComplete="current-password"
+                placeholder="Required to save profile changes"
+                required
+              />
             </label>
-            <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
-              Email
-              <Input value={auth.email} readOnly />
-            </label>
-          </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="submit" disabled={isSavingProfile || profileIsUnchanged}>
+                {isSavingProfile ? "Saving profile…" : "Save profile"}
+              </Button>
+              {profileMessage && <StatusMessage message={profileMessage} success={profileMessage === "Profile updated."} />}
+            </div>
+          </form>
         </section>
 
         <section className="rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-sm">
-          <SectionHeader icon={<LockKeyhole size={18} />} title="Security" description="JWT protected account access" />
-          <div className="mt-5 grid gap-3">
-            <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
-              Current password
-              <Input
-                type="password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-                placeholder="Enter current password"
-              />
-            </label>
-            <Button type="button" onClick={handleUnlockPassword}>
-              Unlock password change
-            </Button>
+          <SectionHeader icon={<LockKeyhole size={18} />} title="Security" description="Verify your identity before changing your password" />
 
-            {isPasswordUnlocked && (
-              <div className="grid gap-3 rounded-xl border border-[#eeeaf1] p-4">
-                <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
-                  New password
-                  <Input
-                    type="password"
-                    value={newPassword}
-                    onChange={(event) => setNewPassword(event.target.value)}
-                    minLength={8}
-                    placeholder="At least 8 characters"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
-                  Confirm password
-                  <Input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    minLength={8}
-                    placeholder="Re-enter new password"
-                  />
-                </label>
-                <Button type="button" onClick={handlePasswordSubmit}>
-                  Save new password
-                </Button>
+          {!isPasswordVerified ? (
+            <form onSubmit={handleVerifyPassword} className="mt-5 grid gap-3">
+              <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
+                Current password
+                <Input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  maxLength={128}
+                  autoComplete="current-password"
+                  placeholder="Enter current password"
+                  required
+                />
+              </label>
+              <Button type="submit" disabled={isVerifyingPassword}>
+                {isVerifyingPassword ? "Verifying…" : "Verify password"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handlePasswordSubmit} className="mt-5 grid gap-3 rounded-xl border border-[#eeeaf1] p-4">
+              <div className="flex items-center justify-between gap-3 text-sm font-semibold text-[#027a48]">
+                <span className="flex items-center gap-2"><CheckCircle2 size={17} /> Identity verified</span>
+                <button type="button" onClick={resetPasswordVerification} className="text-xs font-medium text-[#77717d] underline underline-offset-4">
+                  Start over
+                </button>
               </div>
-            )}
+              <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
+                New password
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  placeholder="At least 8 characters"
+                  required
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-[#46404b]">
+                Confirm password
+                <Input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  placeholder="Re-enter new password"
+                  required
+                />
+              </label>
+              <Button type="submit" disabled={isSavingPassword}>
+                {isSavingPassword ? "Saving password…" : "Save new password"}
+              </Button>
+            </form>
+          )}
 
-            {passwordMessage && (
-              <div className="rounded-xl bg-[#fff7f2] p-3 text-sm text-[#6f3420]">
-                {passwordMessage}
-              </div>
-            )}
-          </div>
+          {passwordMessage && (
+            <div className="mt-3">
+              <StatusMessage message={passwordMessage} success={passwordMessage.includes("verified") || passwordMessage.includes("successfully")} />
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-sm">
@@ -138,6 +264,14 @@ export function SettingsPage({ auth, isDarkMode, onDarkModeChange }: SettingsPag
         </section>
       </div>
     </div>
+  );
+}
+
+function StatusMessage({ message, success }: { message: string; success: boolean }) {
+  return (
+    <p role="status" className={success ? "text-sm font-medium text-[#027a48]" : "text-sm font-medium text-[#b42318]"}>
+      {message}
+    </p>
   );
 }
 
@@ -182,4 +316,20 @@ function SettingToggle({ label, enabled, onToggle, icon }: SettingToggleProps) {
       </span>
     </button>
   );
+}
+
+function getErrorMessage(error: unknown) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof error.response === "object" &&
+    error.response !== null &&
+    "data" in error.response
+  ) {
+    const data = error.response.data as { message?: string };
+    return data.message ?? "Request failed.";
+  }
+
+  return error instanceof Error ? error.message : "Request failed.";
 }

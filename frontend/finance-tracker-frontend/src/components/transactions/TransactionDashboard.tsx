@@ -22,10 +22,11 @@ import type { Transaction, TransactionFilters, TransactionPayload } from "@/type
 
 type TransactionDashboardProps = {
   auth: AuthResponse;
+  onAuthChange: (auth: AuthResponse) => void;
   onSignOut: () => void;
 };
 
-export function TransactionDashboard({ auth, onSignOut }: TransactionDashboardProps) {
+export function TransactionDashboard({ auth, onAuthChange, onSignOut }: TransactionDashboardProps) {
   const [activeView, setActiveView] = useState<AppView>("dashboard");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -152,7 +153,7 @@ export function TransactionDashboard({ auth, onSignOut }: TransactionDashboardPr
       {activeView === "dashboard" ? (
         <DashboardOverview auth={auth} />
       ) : activeView === "settings" ? (
-        <SettingsPage auth={auth} isDarkMode={isDarkMode} onDarkModeChange={setIsDarkMode} />
+        <SettingsPage auth={auth} isDarkMode={isDarkMode} onAuthChange={onAuthChange} onDarkModeChange={setIsDarkMode} />
       ) : (
         <div className="grid gap-5 py-6 lg:grid-cols-[360px_1fr]">
           <aside className="self-start rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">

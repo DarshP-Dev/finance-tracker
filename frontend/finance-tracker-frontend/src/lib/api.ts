@@ -18,6 +18,17 @@ export type AuthPayload = {
   password: string;
 };
 
+export type UpdateProfilePayload = {
+  username: string;
+  email: string;
+  currentPassword: string;
+};
+
+export type ChangePasswordPayload = {
+  currentPassword: string;
+  newPassword: string;
+};
+
 export const AUTH_TOKEN_KEY = "financeTrackerToken";
 export const AUTH_USER_KEY = "financeTrackerAuth";
 
@@ -63,8 +74,7 @@ api.interceptors.response.use(
 export async function authenticate(mode: AuthMode, payload: AuthPayload) {
   const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
   const response = await api.post<AuthResponse>(endpoint, payload);
-  localStorage.setItem(AUTH_TOKEN_KEY, response.data.accessToken);
-  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(response.data));
+  storeAuth(response.data);
   return response.data;
 }
 
@@ -98,6 +108,25 @@ export async function deleteTransaction(id: number) {
 export async function fetchDashboard(filters?: { startDate?: string; endDate?: string }) {
   const response = await api.get<DashboardData>("/api/dashboard", { params: filters });
   return response.data;
+}
+
+export async function verifyCurrentPassword(password: string) {
+  await api.post("/api/account/verify-password", { password });
+}
+
+export async function updateProfile(payload: UpdateProfilePayload) {
+  const response = await api.patch<AuthResponse>("/api/account/profile", payload);
+  storeAuth(response.data);
+  return response.data;
+}
+
+export async function changePassword(payload: ChangePasswordPayload) {
+  await api.put("/api/account/password", payload);
+}
+
+export function storeAuth(auth: AuthResponse) {
+  localStorage.setItem(AUTH_TOKEN_KEY, auth.accessToken);
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(auth));
 }
 
 export function getStoredAuth() {

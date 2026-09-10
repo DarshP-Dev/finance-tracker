@@ -66,7 +66,7 @@ export default function Home() {
   }
 
   if (auth) {
-    return <TransactionDashboard auth={auth} onSignOut={() => setAuth(null)} />;
+    return <TransactionDashboard auth={auth} onAuthChange={setAuth} onSignOut={() => setAuth(null)} />;
   }
 
   return (
