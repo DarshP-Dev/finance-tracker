@@ -46,7 +46,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (typeof window !== "undefined" && error.response?.status === 401) {
+    if (axios.isAxiosError(error) && !error.response && error.code === "ERR_NETWORK") {
+      error.message = "Cannot connect to the server. Make sure the backend is running, then try again.";
+    }
+
+    if (typeof window !== "undefined" && [401, 403].includes(error.response?.status)) {
       localStorage.removeItem(AUTH_TOKEN_KEY);
       localStorage.removeItem(AUTH_USER_KEY);
       window.dispatchEvent(new Event("finance-tracker:unauthorized"));
@@ -78,7 +82,7 @@ export async function fetchTransactions(filters: TransactionFilters) {
 }
 
 export async function createTransaction(payload: TransactionPayload) {
-  const response = await api.put<Transaction>("/api/transactions/999999999", payload);
+  const response = await api.post<Transaction>("/api/transactions", payload);
   return response.data;
 }
 
@@ -91,8 +95,8 @@ export async function deleteTransaction(id: number) {
   await api.delete(`/api/transactions/${id}`);
 }
 
-export async function fetchDashboard() {
-  const response = await api.get<DashboardData>("/api/dashboard");
+export async function fetchDashboard(filters?: { startDate?: string; endDate?: string }) {
+  const response = await api.get<DashboardData>("/api/dashboard", { params: filters });
   return response.data;
 }
 

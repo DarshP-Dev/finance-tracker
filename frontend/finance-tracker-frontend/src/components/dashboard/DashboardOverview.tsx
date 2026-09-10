@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, ChartNoAxesCombined, PiggyBank, SlidersHorizontal, TrendingDown, TrendingUp } from "lucide-react";
-import { IncomeExpenseChart } from "@/components/dashboard/IncomeExpenseChart";
+import { CalendarDays, PiggyBank, TrendingDown, TrendingUp } from "lucide-react";
 import { MonthlyTrendChart } from "@/components/dashboard/MonthlyTrendChart";
 import { RecentTransactionsCard } from "@/components/dashboard/RecentTransactionsCard";
 import { SpendingPieChart } from "@/components/dashboard/SpendingPieChart";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/components/transactions/formatters";
-import { fetchDashboard, type AuthResponse } from "@/lib/api";
+import { fetchDashboard, fetchTransactions, type AuthResponse } from "@/lib/api";
+import type { Transaction } from "@/types/transactions";
 import type { DashboardData } from "@/types/dashboard";
 
 type DashboardOverviewProps = {
@@ -17,25 +17,32 @@ type DashboardOverviewProps = {
 };
 
 export function DashboardOverview({ auth }: DashboardOverviewProps) {
+  const defaultRange = getDefaultDateRange();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [isDatePanelOpen, setIsDatePanelOpen] = useState(false);
-  const [startDate, setStartDate] = useState("2024-08-01");
-  const [endDate, setEndDate] = useState("2024-12-31");
+  const [startDate, setStartDate] = useState(defaultRange.startDate);
+  const [endDate, setEndDate] = useState(defaultRange.endDate);
 
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);
     setMessage("");
 
     try {
-      setDashboard(await fetchDashboard());
+      const [report, activity] = await Promise.all([
+        fetchDashboard({ startDate, endDate }),
+        fetchTransactions({ startDate, endDate }),
+      ]);
+      setDashboard(report);
+      setTransactions(activity);
     } catch (error) {
       setMessage(getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [endDate, startDate]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -48,8 +55,8 @@ export function DashboardOverview({ auth }: DashboardOverviewProps) {
   if (isLoading) {
     return (
       <div className="grid gap-5 py-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="h-[160px] animate-pulse rounded-2xl border border-[#e4e0e7] bg-white shadow-sm" />
           ))}
         </div>
@@ -66,6 +73,13 @@ export function DashboardOverview({ auth }: DashboardOverviewProps) {
       <div className="py-6">
         <div className="rounded-2xl border border-[#e4e0e7] bg-white p-6 text-sm text-[#77717d] shadow-sm">
           {message || "Dashboard data is unavailable."}
+          <button
+            type="button"
+            onClick={() => void loadDashboard()}
+            className="mt-4 block rounded-xl bg-[#15151b] px-5 py-2.5 text-sm font-semibold text-white"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -75,7 +89,7 @@ export function DashboardOverview({ auth }: DashboardOverviewProps) {
     <div className="grid gap-5 py-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-normal text-[#151515]">Good Morning, {auth.username}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#151515]">Welcome back, {auth.username}</h1>
           <p className="mt-2 text-sm text-[#77717d]">This is your finance report.</p>
         </div>
         <div className="relative flex flex-col gap-2 sm:flex-row">
@@ -86,10 +100,6 @@ export function DashboardOverview({ auth }: DashboardOverviewProps) {
           >
             <CalendarDays size={16} />
             {formatDateRange(startDate, endDate)}
-          </button>
-          <button className="h-11 rounded-xl bg-[#15151b] px-5 text-sm font-semibold text-white shadow-sm">
-            <SlidersHorizontal className="mr-2 inline" size={16} />
-            Filters
           </button>
 
           {isDatePanelOpen && (
@@ -120,11 +130,10 @@ export function DashboardOverview({ auth }: DashboardOverviewProps) {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Income" value={formatCurrency(dashboard.summary.totalIncome)} helper="You made an extra income this month" tone="income" icon={<TrendingUp size={19} />} />
-        <SummaryCard label="Expenses" value={formatCurrency(dashboard.summary.totalExpenses)} helper="You overspent against planned budget" tone="expense" icon={<TrendingDown size={19} />} />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <SummaryCard label="Income" value={formatCurrency(dashboard.summary.totalIncome)} helper="Total income in the selected period" tone="income" icon={<TrendingUp size={19} />} />
+        <SummaryCard label="Expenses" value={formatCurrency(dashboard.summary.totalExpenses)} helper="Total expenses in the selected period" tone="expense" icon={<TrendingDown size={19} />} />
         <SummaryCard label="My Balance" value={formatCurrency(dashboard.summary.totalSavings)} helper="Income minus expenses" tone="savings" icon={<PiggyBank size={19} />} />
-        <SummaryCard label="Investments" value={formatCurrency(dashboard.summary.investmentValue)} helper="Shares at purchase value" tone="investment" icon={<ChartNoAxesCombined size={19} />} />
       </div>
 
       {message && (
@@ -134,14 +143,11 @@ export function DashboardOverview({ auth }: DashboardOverviewProps) {
       )}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <MonthlyTrendChart data={dashboard.monthlySpending} />
+        <MonthlyTrendChart data={dashboard.cashFlowTrend ?? []} />
         <SpendingPieChart data={dashboard.categorySpending} />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <IncomeExpenseChart data={dashboard.incomeVsExpenses} />
-        <RecentTransactionsCard transactions={dashboard.recentTransactions} />
-      </div>
+      <RecentTransactionsCard transactions={transactions} />
     </div>
   );
 }
@@ -158,6 +164,24 @@ function formatDateRange(startDate: string, endDate: string) {
   });
 
   return `${formatter.format(new Date(`${startDate}T00:00:00`))} - ${formatter.format(new Date(`${endDate}T00:00:00`))}`;
+}
+
+function getDefaultDateRange() {
+  const currentYear = new Date().getFullYear();
+  const startDate = new Date(currentYear, 0, 1);
+  const endDate = new Date(currentYear, 11, 31);
+
+  return {
+    startDate: toDateInputValue(startDate),
+    endDate: toDateInputValue(endDate),
+  };
+}
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function getErrorMessage(error: unknown) {

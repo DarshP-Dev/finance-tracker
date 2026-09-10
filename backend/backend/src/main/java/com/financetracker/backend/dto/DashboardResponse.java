@@ -17,6 +17,7 @@ public class DashboardResponse {
     private DashboardSummaryResponse summary;
     private List<CategorySpendingResponse> categorySpending;
     private List<MonthlySpendingResponse> monthlySpending;
+    private List<CashFlowTrendResponse> cashFlowTrend;
     private IncomeExpenseResponse incomeVsExpenses;
     private List<TransactionResponse> recentTransactions;
 }

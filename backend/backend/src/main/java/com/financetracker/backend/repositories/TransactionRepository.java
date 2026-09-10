@@ -34,6 +34,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
 
     List<Transaction> findTop5ByUserIdOrderByDateDescIdDesc(Long userId);
 
+    List<Transaction> findTop5ByUserIdAndDateBetweenOrderByDateDescIdDesc(
+            Long userId,
+            LocalDate startDate,
+            LocalDate endDate
+    );
+
     @Query("""
             select coalesce(sum(t.amount), 0)
             from Transaction t
@@ -45,6 +51,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
     );
 
     @Query("""
+            select coalesce(sum(t.amount), 0)
+            from Transaction t
+            where t.user.id = :userId
+                and t.type = :type
+                and t.date between :startDate and :endDate
+            """)
+    java.math.BigDecimal sumAmountByUserIdAndTypeBetweenDates(
+            @Param("userId") Long userId,
+            @Param("type") TransactionType type,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query("""
             select t.category, coalesce(sum(t.amount), 0)
             from Transaction t
             where t.user.id = :userId and t.type = com.financetracker.backend.entities.TransactionType.EXPENSE
@@ -52,6 +72,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
             order by coalesce(sum(t.amount), 0) desc
             """)
     List<Object[]> sumExpensesByCategory(@Param("userId") Long userId);
+
+    @Query("""
+            select t.category, coalesce(sum(t.amount), 0)
+            from Transaction t
+            where t.user.id = :userId
+                and t.type = com.financetracker.backend.entities.TransactionType.EXPENSE
+                and t.date between :startDate and :endDate
+            group by t.category
+            order by coalesce(sum(t.amount), 0) desc
+            """)
+    List<Object[]> sumExpensesByCategoryBetweenDates(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 
     @Query(
             value = """
@@ -66,6 +101,44 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
     )
     List<Object[]> sumMonthlyExpenses(@Param("userId") Long userId);
 
+    @Query(
+            value = """
+                    select transaction_date::date as spending_date,
+                           coalesce(sum(amount), 0) as total
+                    from transactions
+                    where user_id = :userId
+                        and type = 'EXPENSE'
+                        and transaction_date between :startDate and :endDate
+                    group by spending_date
+                    order by spending_date
+                    """,
+            nativeQuery = true
+    )
+    List<Object[]> sumDailyExpensesBetweenDates(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query(
+            value = """
+                    select transaction_date::date as transaction_day,
+                           type,
+                           coalesce(sum(amount), 0) as total
+                    from transactions
+                    where user_id = :userId
+                        and transaction_date between :startDate and :endDate
+                    group by transaction_day, type
+                    order by transaction_day
+                    """,
+            nativeQuery = true
+    )
+    List<Object[]> sumDailyCashFlowBetweenDates(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
     @Query("""
             select t.type, coalesce(sum(t.amount), 0)
             from Transaction t
@@ -73,4 +146,17 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
             group by t.type
             """)
     List<Object[]> sumAmountByType(@Param("userId") Long userId);
+
+    @Query("""
+            select t.type, coalesce(sum(t.amount), 0)
+            from Transaction t
+            where t.user.id = :userId
+                and t.date between :startDate and :endDate
+            group by t.type
+            """)
+    List<Object[]> sumAmountByTypeBetweenDates(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

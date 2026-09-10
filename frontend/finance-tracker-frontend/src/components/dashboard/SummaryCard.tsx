@@ -19,16 +19,19 @@ const toneStyles = {
 
 export function SummaryCard({ label, value, helper, tone, icon }: SummaryCardProps) {
   return (
-    <div className="rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-black ${toneStyles[tone]}`}>
-          {icon}
+    <div className="overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-4">
+            <div className={`flex h-9 w-9 items-center justify-center rounded-xl border border-[#eee8e2] text-sm font-black ${toneStyles[tone]}`}>
+              {icon}
+            </div>
+            <div className="text-base font-semibold text-[#151515]">{label}</div>
+          </div>
         </div>
-        <button className="text-lg leading-none text-[#19171c]">...</button>
+        <div className="mt-4 text-2xl font-semibold leading-none tabular-nums text-[#151515]">{value}</div>
+        <div className="mt-2 text-xs text-[#77717d]">{helper}</div>
       </div>
-      <div className="mt-3 text-sm font-semibold text-[#151515]">{label}</div>
-      <div className="mt-4 text-[26px] font-semibold leading-none text-[#151515]">{value}</div>
-      <div className="mt-3 text-xs text-[#77717d]">{helper}</div>
     </div>
   );
 }

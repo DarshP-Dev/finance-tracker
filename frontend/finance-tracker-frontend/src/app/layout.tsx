@@ -2,8 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Finance Tracker",
-  description: "Track finances with secure account access.",
+  title: "Personal Finance Tracker",
+  description: "Track income, expenses, and cash flow with secure account access.",
+  icons: {
+    icon: "/personal-finance-logo.png",
+    shortcut: "/personal-finance-logo.png",
+    apple: "/personal-finance-logo.png",
+  },
 };
 
 export default function RootLayout({

@@ -20,10 +20,10 @@ export function SpendingPieChart({ data }: SpendingPieChartProps) {
   return (
     <ChartCard title="Summary" description="Expense concentration" isEmpty={chartData.length === 0}>
       <div className="grid gap-4">
-        <div className="h-[230px]">
+        <div className="h-[170px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={chartData} dataKey="value" nameKey="name" innerRadius={68} outerRadius={94} paddingAngle={4}>
+              <Pie data={chartData} dataKey="value" nameKey="name" innerRadius={52} outerRadius={72} paddingAngle={4}>
                 {chartData.map((entry, index) => (
                   <Cell key={entry.name} fill={colors[index % colors.length]} />
                 ))}

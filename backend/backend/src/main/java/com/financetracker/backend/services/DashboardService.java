@@ -1,6 +1,7 @@
 package com.financetracker.backend.services;
 
 import com.financetracker.backend.dto.CategorySpendingResponse;
+import com.financetracker.backend.dto.CashFlowTrendResponse;
 import com.financetracker.backend.dto.DashboardResponse;
 import com.financetracker.backend.dto.DashboardSummaryResponse;
 import com.financetracker.backend.dto.IncomeExpenseResponse;
@@ -15,11 +16,15 @@ import com.financetracker.backend.repositories.TransactionRepository;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
@@ -30,12 +35,28 @@ public class DashboardService {
     private final InvestmentRepository investmentRepository;
 
     @Transactional(readOnly = true)
-    public DashboardResponse getDashboard(Authentication authentication) {
+    public DashboardResponse getDashboard(Authentication authentication, LocalDate startDate, LocalDate endDate) {
         User user = authenticatedUserService.getCurrentUser(authentication);
         Long userId = user.getId();
+        LocalDate resolvedEndDate = endDate == null ? LocalDate.now() : endDate;
+        LocalDate resolvedStartDate = startDate == null ? resolvedEndDate.minusMonths(1) : startDate;
 
-        BigDecimal totalIncome = transactionRepository.sumAmountByUserIdAndType(userId, TransactionType.INCOME);
-        BigDecimal totalExpenses = transactionRepository.sumAmountByUserIdAndType(userId, TransactionType.EXPENSE);
+        if (resolvedStartDate.isAfter(resolvedEndDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before or equal to endDate");
+        }
+
+        BigDecimal totalIncome = transactionRepository.sumAmountByUserIdAndTypeBetweenDates(
+                userId,
+                TransactionType.INCOME,
+                resolvedStartDate,
+                resolvedEndDate
+        );
+        BigDecimal totalExpenses = transactionRepository.sumAmountByUserIdAndTypeBetweenDates(
+                userId,
+                TransactionType.EXPENSE,
+                resolvedStartDate,
+                resolvedEndDate
+        );
         BigDecimal investmentValue = investmentRepository.calculateInvestmentValue(userId);
 
         return DashboardResponse.builder()
@@ -45,18 +66,23 @@ public class DashboardService {
                         .totalSavings(totalIncome.subtract(totalExpenses))
                         .investmentValue(investmentValue)
                         .build())
-                .categorySpending(getCategorySpending(userId))
-                .monthlySpending(getMonthlySpending(userId))
-                .incomeVsExpenses(getIncomeVsExpenses(userId))
-                .recentTransactions(transactionRepository.findTop5ByUserIdOrderByDateDescIdDesc(userId)
+                .categorySpending(getCategorySpending(userId, resolvedStartDate, resolvedEndDate))
+                .monthlySpending(getMonthlySpending(userId, resolvedStartDate, resolvedEndDate))
+                .cashFlowTrend(getCashFlowTrend(userId, resolvedStartDate, resolvedEndDate))
+                .incomeVsExpenses(getIncomeVsExpenses(userId, resolvedStartDate, resolvedEndDate))
+                .recentTransactions(transactionRepository.findTop5ByUserIdAndDateBetweenOrderByDateDescIdDesc(
+                                userId,
+                                resolvedStartDate,
+                                resolvedEndDate
+                        )
                         .stream()
                         .map(this::toTransactionResponse)
                         .toList())
                 .build();
     }
 
-    private List<CategorySpendingResponse> getCategorySpending(Long userId) {
-        return transactionRepository.sumExpensesByCategory(userId)
+    private List<CategorySpendingResponse> getCategorySpending(Long userId, LocalDate startDate, LocalDate endDate) {
+        return transactionRepository.sumExpensesByCategoryBetweenDates(userId, startDate, endDate)
                 .stream()
                 .map(row -> CategorySpendingResponse.builder()
                         .category((TransactionCategory) row[0])
@@ -65,8 +91,8 @@ public class DashboardService {
                 .toList();
     }
 
-    private List<MonthlySpendingResponse> getMonthlySpending(Long userId) {
-        return transactionRepository.sumMonthlyExpenses(userId)
+    private List<MonthlySpendingResponse> getMonthlySpending(Long userId, LocalDate startDate, LocalDate endDate) {
+        return transactionRepository.sumDailyExpensesBetweenDates(userId, startDate, endDate)
                 .stream()
                 .map(row -> MonthlySpendingResponse.builder()
                         .month(toLocalDate(row[0]))
@@ -75,11 +101,34 @@ public class DashboardService {
                 .toList();
     }
 
-    private IncomeExpenseResponse getIncomeVsExpenses(Long userId) {
+    private List<CashFlowTrendResponse> getCashFlowTrend(Long userId, LocalDate startDate, LocalDate endDate) {
+        Map<LocalDate, CashFlowTrendResponse> trendByDate = new LinkedHashMap<>();
+
+        for (Object[] row : transactionRepository.sumDailyCashFlowBetweenDates(userId, startDate, endDate)) {
+            LocalDate date = toLocalDate(row[0]);
+            TransactionType type = TransactionType.valueOf(String.valueOf(row[1]));
+            BigDecimal total = (BigDecimal) row[2];
+            CashFlowTrendResponse point = trendByDate.computeIfAbsent(date, currentDate -> CashFlowTrendResponse.builder()
+                    .date(currentDate)
+                    .income(BigDecimal.ZERO)
+                    .expenses(BigDecimal.ZERO)
+                    .build());
+
+            if (type == TransactionType.INCOME) {
+                point.setIncome(total);
+            } else if (type == TransactionType.EXPENSE) {
+                point.setExpenses(total);
+            }
+        }
+
+        return trendByDate.values().stream().toList();
+    }
+
+    private IncomeExpenseResponse getIncomeVsExpenses(Long userId, LocalDate startDate, LocalDate endDate) {
         BigDecimal income = BigDecimal.ZERO;
         BigDecimal expenses = BigDecimal.ZERO;
 
-        for (Object[] row : transactionRepository.sumAmountByType(userId)) {
+        for (Object[] row : transactionRepository.sumAmountByTypeBetweenDates(userId, startDate, endDate)) {
             TransactionType type = (TransactionType) row[0];
             BigDecimal total = (BigDecimal) row[1];
 

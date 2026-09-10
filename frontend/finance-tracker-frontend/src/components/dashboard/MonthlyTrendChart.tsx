@@ -1,37 +1,40 @@
 "use client";
 
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartCard } from "@/components/dashboard/ChartCard";
 import { formatCurrency } from "@/components/transactions/formatters";
-import type { MonthlySpending } from "@/types/dashboard";
+import type { CashFlowTrend } from "@/types/dashboard";
 
 type MonthlyTrendChartProps = {
-  data: MonthlySpending[];
+  data: CashFlowTrend[];
 };
 
 export function MonthlyTrendChart({ data }: MonthlyTrendChartProps) {
   const chartData = data.map((item) => ({
-    month: new Intl.DateTimeFormat("en-US", { month: "short", year: "2-digit" }).format(new Date(`${item.month}T00:00:00`)),
-    spending: item.total,
+    date: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(`${item.date}T00:00:00`)),
+    income: item.income,
+    expenses: item.expenses,
   }));
 
   return (
-    <ChartCard title="Analytics" description="Expense movement over time" isEmpty={chartData.length === 0}>
-      <div className="h-[280px]">
+    <ChartCard title="Analytics" description="Income and expense movement over time" isEmpty={chartData.length === 0}>
+      <div className="h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="spendingGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#ff5a1f" stopOpacity={0.34} />
-                <stop offset="95%" stopColor="#ff5a1f" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
+          <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
             <CartesianGrid stroke="#eee8e2" strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#77717d", fontSize: 12 }} />
+            <XAxis
+              dataKey="date"
+              interval="preserveStartEnd"
+              minTickGap={32}
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: "#77717d", fontSize: 12 }}
+            />
             <YAxis hide tickFormatter={(value) => `$${value}`} />
             <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-            <Area type="monotone" dataKey="spending" stroke="#ff5a1f" strokeWidth={3} fill="url(#spendingGradient)" />
-          </AreaChart>
+            <Line type="monotone" dataKey="income" name="Income" stroke="#16a34a" strokeWidth={3} dot={{ r: 4, fill: "#16a34a" }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#dc2626" strokeWidth={3} dot={{ r: 4, fill: "#dc2626" }} activeDot={{ r: 6 }} />
+          </LineChart>
         </ResponsiveContainer>
       </div>
     </ChartCard>

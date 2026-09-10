@@ -17,6 +17,12 @@ export type MonthlySpending = {
   total: number;
 };
 
+export type CashFlowTrend = {
+  date: string;
+  income: number;
+  expenses: number;
+};
+
 export type IncomeVsExpenses = {
   income: number;
   expenses: number;
@@ -26,6 +32,7 @@ export type DashboardData = {
   summary: DashboardSummary;
   categorySpending: CategorySpending[];
   monthlySpending: MonthlySpending[];
+  cashFlowTrend: CashFlowTrend[];
   incomeVsExpenses: IncomeVsExpenses;
   recentTransactions: Transaction[];
 };

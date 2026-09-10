@@ -35,21 +35,6 @@ public class TransactionController {
             Authentication authentication,
             @Valid @RequestBody TransactionRequest request
     ) {
-        return createTransactionResponse(authentication, request);
-    }
-
-    @PutMapping("/create")
-    public ResponseEntity<TransactionResponse> createTransactionWithPut(
-            Authentication authentication,
-            @Valid @RequestBody TransactionRequest request
-    ) {
-        return createTransactionResponse(authentication, request);
-    }
-
-    private ResponseEntity<TransactionResponse> createTransactionResponse(
-            Authentication authentication,
-            TransactionRequest request
-    ) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(transactionService.createTransaction(authentication, request));
@@ -82,10 +67,6 @@ public class TransactionController {
             @PathVariable Long transactionId,
             @Valid @RequestBody TransactionRequest request
     ) {
-        if (transactionId == 999999999L) {
-            return createTransactionResponse(authentication, request);
-        }
-
         return ResponseEntity.ok(transactionService.updateTransaction(authentication, transactionId, request));
     }
 

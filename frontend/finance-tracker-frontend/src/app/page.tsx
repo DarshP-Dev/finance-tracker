@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -73,9 +74,18 @@ export default function Home() {
       <section className="mx-auto grid min-h-screen w-full max-w-6xl grid-cols-1 lg:grid-cols-[1fr_420px]">
         <div className="flex flex-col justify-between px-6 py-8 sm:px-10 lg:py-12">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#195b4d]">
-              Finance Tracker
-            </p>
+            <div className="flex items-center gap-3">
+              <Image
+                src="/personal-finance-logo.png"
+                alt="Personal Finance Tracker logo"
+                width={42}
+                height={42}
+                className="h-[42px] w-[42px] rounded-xl object-cover"
+              />
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#195b4d]">
+                Personal Finance Tracker
+              </p>
+            </div>
             <h1 className="mt-12 max-w-2xl text-4xl font-semibold leading-tight sm:text-5xl">
               Track cash flow with secure, user-scoped transactions.
             </h1>
