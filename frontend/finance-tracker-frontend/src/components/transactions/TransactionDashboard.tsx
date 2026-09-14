@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { FeaturePlaceholder } from "@/components/features/FeaturePlaceholder";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 import { Button } from "@/components/ui/button";
 import { DateFilter } from "@/components/transactions/DateFilter";
@@ -17,7 +19,7 @@ import {
   updateTransaction,
   type AuthResponse,
 } from "@/lib/api";
-import type { AppView } from "@/types/navigation";
+import { appViewRoutes, getAppView, type AppView } from "@/types/navigation";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
 
 type TransactionDashboardProps = {
@@ -27,7 +29,9 @@ type TransactionDashboardProps = {
 };
 
 export function TransactionDashboard({ auth, onAuthChange, onSignOut }: TransactionDashboardProps) {
-  const [activeView, setActiveView] = useState<AppView>("dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
+  const activeView = getAppView(pathname);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>({});
@@ -140,6 +144,11 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   function handleSignOut() {
     clearStoredAuth();
     onSignOut();
+    router.replace(appViewRoutes.dashboard);
+  }
+
+  function handleViewChange(view: AppView) {
+    router.push(appViewRoutes[view]);
   }
 
   return (
@@ -147,14 +156,14 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
       auth={auth}
       activeView={activeView}
       isDarkMode={isDarkMode}
-      onViewChange={setActiveView}
+      onViewChange={handleViewChange}
       onSignOut={handleSignOut}
     >
       {activeView === "dashboard" ? (
         <DashboardOverview auth={auth} />
       ) : activeView === "settings" ? (
         <SettingsPage auth={auth} isDarkMode={isDarkMode} onAuthChange={onAuthChange} onDarkModeChange={setIsDarkMode} />
-      ) : (
+      ) : activeView === "transactions" ? (
         <div className="grid gap-5 py-6 lg:grid-cols-[360px_1fr]">
           <aside className="self-start rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
             <div className="mb-4">
@@ -196,6 +205,8 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
             />
           </section>
         </div>
+      ) : (
+        <FeaturePlaceholder view={activeView} />
       )}
 
       {editingTransaction && (

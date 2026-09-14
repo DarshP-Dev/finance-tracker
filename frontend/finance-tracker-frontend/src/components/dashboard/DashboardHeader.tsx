@@ -10,6 +10,7 @@ import {
   Home,
   LayoutDashboard,
   LogOut,
+  Menu,
   MessageCircle,
   Search,
   Settings,
@@ -30,10 +31,21 @@ type DashboardHeaderProps = {
 
 export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, onSignOut, children }: DashboardHeaderProps) {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  function navigateTo(view: AppView) {
+    setIsAccountOpen(false);
+    setIsMobileNavOpen(false);
+    setIsNotificationsOpen(false);
+    setIsSearchOpen(false);
+    onViewChange(view);
+  }
 
   function handleSettingsClick() {
-    setIsAccountOpen(false);
-    onViewChange("settings");
+    navigateTo("settings");
   }
 
   return (
@@ -52,21 +64,21 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
           </div>
 
           <SidebarSection label="Main Menu">
-            <SidebarButton active={activeView === "dashboard"} onClick={() => onViewChange("dashboard")} label="Dashboard" icon={<LayoutDashboard size={17} />} />
-            <SidebarButton active={false} onClick={() => onViewChange("dashboard")} label="Analytics" icon={<BarChart3 size={17} />} />
-            <SidebarButton active={activeView === "transactions"} onClick={() => onViewChange("transactions")} label="Transaction" icon={<WalletCards size={17} />} />
-            <SidebarButton active={false} onClick={() => onViewChange("transactions")} label="Customer" icon={<UsersRound size={17} />} />
-            <SidebarButton active={false} onClick={() => onViewChange("dashboard")} label="Chat" icon={<MessageCircle size={17} />} />
+            <SidebarButton active={activeView === "dashboard"} onClick={() => navigateTo("dashboard")} label="Dashboard" icon={<LayoutDashboard size={17} />} />
+            <SidebarButton active={activeView === "analytics"} onClick={() => navigateTo("analytics")} label="Analytics" icon={<BarChart3 size={17} />} />
+            <SidebarButton active={activeView === "transactions"} onClick={() => navigateTo("transactions")} label="Transactions" icon={<WalletCards size={17} />} />
+            <SidebarButton active={activeView === "customer"} onClick={() => navigateTo("customer")} label="Customer" icon={<UsersRound size={17} />} />
+            <SidebarButton active={activeView === "chat"} onClick={() => navigateTo("chat")} label="Chat" icon={<MessageCircle size={17} />} />
           </SidebarSection>
 
           <SidebarSection label="Account">
-            <SidebarButton active={false} onClick={() => onViewChange("dashboard")} label="Wallet" icon={<WalletCards size={17} />} />
-            <SidebarButton active={false} onClick={() => onViewChange("dashboard")} label="Members" icon={<UsersRound size={17} />} />
+            <SidebarButton active={activeView === "wallet"} onClick={() => navigateTo("wallet")} label="Wallet" icon={<WalletCards size={17} />} />
+            <SidebarButton active={activeView === "members"} onClick={() => navigateTo("members")} label="Members" icon={<UsersRound size={17} />} />
           </SidebarSection>
 
           <div className="mt-auto grid gap-2">
-            <SidebarButton active={false} onClick={() => undefined} label="Help" icon={<CircleHelp size={17} />} />
-            <SidebarButton active={activeView === "settings"} onClick={() => onViewChange("settings")} label="Setting" icon={<Settings size={17} />} />
+            <SidebarButton active={activeView === "help"} onClick={() => navigateTo("help")} label="Help" icon={<CircleHelp size={17} />} />
+            <SidebarButton active={activeView === "settings"} onClick={() => navigateTo("settings")} label="Settings" icon={<Settings size={17} />} />
             <button
               type="button"
               onClick={onSignOut}
@@ -83,20 +95,30 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
             <div className="flex items-center gap-4">
               <button
                 type="button"
-                onClick={() => onViewChange("dashboard")}
+                onClick={() => navigateTo("dashboard")}
                 className={isDarkMode ? "inline-flex h-10 items-center gap-2 rounded-xl border border-[#343139] bg-[#1f1f23] px-4 text-sm font-semibold text-[#ff8a68] transition hover:border-[#ff5a1f]" : "inline-flex h-10 items-center gap-2 rounded-xl border border-[#e4e0e7] bg-white px-4 text-sm font-semibold text-[#ff5a1f] transition hover:border-[#ff5a1f]"}
               >
                 <Home size={16} />
                 Home
               </button>
-              <div className="grid grid-cols-2 rounded-xl border border-[#e4e0e7] bg-white p-1 lg:hidden">
-                <button type="button" onClick={() => onViewChange("dashboard")} className={activeView === "dashboard" ? activeTabClass : inactiveTabClass}>
+              <div className="hidden grid-cols-2 rounded-xl border border-[#e4e0e7] bg-white p-1 sm:grid lg:hidden">
+                <button type="button" onClick={() => navigateTo("dashboard")} className={activeView === "dashboard" ? activeTabClass : inactiveTabClass}>
                   Dashboard
                 </button>
-                <button type="button" onClick={() => onViewChange("transactions")} className={activeView === "transactions" ? activeTabClass : inactiveTabClass}>
-                  Transaction
+                <button type="button" onClick={() => navigateTo("transactions")} className={activeView === "transactions" ? activeTabClass : inactiveTabClass}>
+                  Transactions
                 </button>
               </div>
+              <button
+                type="button"
+                aria-expanded={isMobileNavOpen}
+                aria-controls="mobile-navigation"
+                onClick={() => setIsMobileNavOpen((current) => !current)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#e4e0e7] bg-white text-[#ff5a1f] lg:hidden"
+              >
+                <Menu size={18} />
+                <span className="sr-only">Open navigation</span>
+              </button>
               <button className="hidden h-10 rounded-xl border border-[#e4e0e7] bg-white px-4 text-sm font-semibold text-[#ff5a1f] lg:block">
                 {getViewLabel(activeView)}
               </button>
@@ -108,17 +130,72 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
                 <input
                   type="search"
                   aria-label="Search"
-                  placeholder="Search"
+                  placeholder="Search features"
+                  value={searchQuery}
+                  onFocus={() => {
+                    setIsSearchOpen(true);
+                    setIsNotificationsOpen(false);
+                    setIsAccountOpen(false);
+                  }}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                    setIsSearchOpen(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setIsSearchOpen(false);
+                      event.currentTarget.blur();
+                    }
+                  }}
                   className={isDarkMode ? "min-w-0 flex-1 bg-transparent px-3 text-sm text-white outline-none placeholder:text-[#8d8792]" : "min-w-0 flex-1 bg-transparent px-3 text-sm text-[#151515] outline-none placeholder:text-[#8d8792]"}
                 />
+                {isSearchOpen && (
+                  <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-50 rounded-2xl border border-[#e4e0e7] bg-white p-4 text-sm shadow-xl">
+                    <p className="font-semibold text-[#151515]">Search is being prepared</p>
+                    <p className="mt-1 leading-5 text-[#77717d]">
+                      {searchQuery.trim()
+                        ? `Results for “${searchQuery.trim()}” will be available when global search is added.`
+                        : "Global results will be added as each section becomes searchable."}
+                    </p>
+                    <button type="button" onClick={() => setIsSearchOpen(false)} className="mt-3 text-xs font-semibold text-[#ff5a1f]">
+                      Close
+                    </button>
+                  </div>
+                )}
               </div>
-              <button className="h-10 w-10 rounded-xl border border-[#ece8ef] bg-white text-sm font-semibold transition hover:border-[#ff5a1f]">
-                <Bell className="mx-auto" size={17} />
-              </button>
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setIsAccountOpen((current) => !current)}
+                  aria-label="Notifications"
+                  aria-expanded={isNotificationsOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => {
+                    setIsNotificationsOpen((current) => !current);
+                    setIsAccountOpen(false);
+                    setIsSearchOpen(false);
+                  }}
+                  className="h-10 w-10 rounded-xl border border-[#ece8ef] bg-white text-sm font-semibold transition hover:border-[#ff5a1f]"
+                >
+                  <Bell className="mx-auto" size={17} />
+                </button>
+                {isNotificationsOpen && (
+                  <div role="dialog" aria-label="Notifications" className="absolute right-0 top-[calc(100%+10px)] z-50 w-72 rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-xl">
+                    <p className="font-semibold text-[#151515]">Notifications</p>
+                    <div className="mt-4 rounded-xl bg-[#f8fafc] px-4 py-5 text-center">
+                      <Bell className="mx-auto text-[#a49eaa]" size={20} />
+                      <p className="mt-2 text-sm font-medium text-[#46404b]">No notifications yet.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAccountOpen((current) => !current);
+                    setIsNotificationsOpen(false);
+                    setIsSearchOpen(false);
+                  }}
                   className="flex items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-[#fff3ed]"
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2c1a14] text-sm font-bold text-white">
@@ -135,6 +212,7 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
                   <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-48 rounded-2xl border border-[#e4e0e7] bg-white p-2 shadow-xl">
                     <button
                       type="button"
+                      onClick={() => navigateTo("help")}
                       className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-semibold text-[#151515] transition hover:bg-[#fff3ed] hover:text-[#ff5a1f]"
                     >
                       <CircleHelp size={16} />
@@ -161,6 +239,20 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
               </div>
             </div>
           </header>
+
+          {isMobileNavOpen && (
+            <nav id="mobile-navigation" aria-label="Mobile navigation" className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-[#e4e0e7] bg-white p-3 lg:hidden">
+              <MobileNavButton active={activeView === "dashboard"} label="Dashboard" onClick={() => navigateTo("dashboard")} />
+              <MobileNavButton active={activeView === "analytics"} label="Analytics" onClick={() => navigateTo("analytics")} />
+              <MobileNavButton active={activeView === "transactions"} label="Transactions" onClick={() => navigateTo("transactions")} />
+              <MobileNavButton active={activeView === "customer"} label="Customer" onClick={() => navigateTo("customer")} />
+              <MobileNavButton active={activeView === "chat"} label="Chat" onClick={() => navigateTo("chat")} />
+              <MobileNavButton active={activeView === "wallet"} label="Wallet" onClick={() => navigateTo("wallet")} />
+              <MobileNavButton active={activeView === "members"} label="Members" onClick={() => navigateTo("members")} />
+              <MobileNavButton active={activeView === "help"} label="Help" onClick={() => navigateTo("help")} />
+              <MobileNavButton active={activeView === "settings"} label="Settings" onClick={() => navigateTo("settings")} />
+            </nav>
+          )}
 
           {children}
         </section>
@@ -211,9 +303,29 @@ const activeTabClass = "h-9 rounded-lg px-3 text-sm font-semibold bg-white text-
 const inactiveTabClass = "h-9 rounded-lg px-3 text-sm font-semibold text-[#67616d] transition hover:text-[#151515]";
 
 function getViewLabel(view: AppView) {
-  if (view === "settings") {
-    return "Settings";
-  }
+  const labels: Record<AppView, string> = {
+    dashboard: "Dashboard",
+    analytics: "Analytics",
+    transactions: "Transactions",
+    customer: "Customer",
+    chat: "Chat",
+    wallet: "Wallet",
+    members: "Members",
+    help: "Help",
+    settings: "Settings",
+  };
 
-  return view === "dashboard" ? "Dashboard" : "Transaction";
+  return labels[view];
+}
+
+function MobileNavButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={active ? "rounded-xl bg-[#fff3ed] px-3 py-2.5 text-left text-sm font-semibold text-[#ff5a1f]" : "rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-[#46404b] hover:bg-[#fff7f2]"}
+    >
+      {label}
+    </button>
+  );
 }
