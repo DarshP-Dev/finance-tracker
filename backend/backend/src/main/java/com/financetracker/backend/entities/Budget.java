@@ -13,8 +13,10 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -61,6 +63,7 @@ public class Budget {
     private TransactionCategory category;
 
     @Column(name = "monthly_limit", nullable = false, precision = 19, scale = 4)
+    @Positive
     private BigDecimal monthlyLimit;
 
     @Column(name = "budget_month", nullable = false)
@@ -70,9 +73,14 @@ public class Budget {
     private LocalDateTime createdAt;
 
     @PrePersist
-    void setCreatedAt() {
+    @PreUpdate
+    void normalizeBudget() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+
+        if (month != null) {
+            month = month.withDayOfMonth(1);
         }
     }
 }

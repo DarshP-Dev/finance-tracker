@@ -18,4 +18,19 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
             TransactionCategory category,
             LocalDate month
     );
+
+    Optional<Budget> findByIdAndUserId(Long id, Long userId);
+
+    boolean existsByUserIdAndCategoryAndMonth(
+            Long userId,
+            TransactionCategory category,
+            LocalDate month
+    );
+
+    boolean existsByUserIdAndCategoryAndMonthAndIdNot(
+            Long userId,
+            TransactionCategory category,
+            LocalDate month,
+            Long id
+    );
 }

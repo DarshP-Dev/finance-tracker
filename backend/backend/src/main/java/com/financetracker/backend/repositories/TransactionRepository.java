@@ -65,6 +65,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
     );
 
     @Query("""
+            select coalesce(sum(t.amount), 0)
+            from Transaction t
+            where t.user.id = :userId
+                and t.type = com.financetracker.backend.entities.TransactionType.EXPENSE
+                and t.category = :category
+                and t.date between :startDate and :endDate
+            """)
+    java.math.BigDecimal sumExpenseAmountByUserIdAndCategoryBetweenDates(
+            @Param("userId") Long userId,
+            @Param("category") TransactionCategory category,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query("""
             select t.category, coalesce(sum(t.amount), 0)
             from Transaction t
             where t.user.id = :userId and t.type = com.financetracker.backend.entities.TransactionType.EXPENSE

@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { Budget, BudgetPayload } from "@/types/budgets";
 import type { DashboardData } from "@/types/dashboard";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
 
@@ -108,6 +109,25 @@ export async function deleteTransaction(id: number) {
 export async function fetchDashboard(filters?: { startDate?: string; endDate?: string }) {
   const response = await api.get<DashboardData>("/api/dashboard", { params: filters });
   return response.data;
+}
+
+export async function fetchBudgets(month: string) {
+  const response = await api.get<Budget[]>("/api/budgets", { params: { month } });
+  return response.data;
+}
+
+export async function createBudget(payload: BudgetPayload) {
+  const response = await api.post<Budget>("/api/budgets", payload);
+  return response.data;
+}
+
+export async function updateBudget(id: number, payload: BudgetPayload) {
+  const response = await api.put<Budget>(`/api/budgets/${id}`, payload);
+  return response.data;
+}
+
+export async function deleteBudget(id: number) {
+  await api.delete(`/api/budgets/${id}`);
 }
 
 export async function verifyCurrentPassword(password: string) {

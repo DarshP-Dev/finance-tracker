@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
+import { BudgetPage } from "@/components/budgets/BudgetPage";
 import { FeaturePlaceholder } from "@/components/features/FeaturePlaceholder";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 import { Button } from "@/components/ui/button";
@@ -205,6 +206,8 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
             />
           </section>
         </div>
+      ) : activeView === "budgets" ? (
+        <BudgetPage />
       ) : (
         <FeaturePlaceholder view={activeView} />
       )}
