@@ -3,6 +3,8 @@ import {
   BarChart3,
   CircleHelp,
   MessageCircle,
+  PieChart,
+  TrendingUp,
   UsersRound,
   WalletCards,
 } from "lucide-react";
@@ -45,6 +47,18 @@ const featureDetails: Record<Exclude<AppView, "dashboard" | "transactions" | "se
     description: "Manage the people who can participate in your finance workspace.",
     nextStep: "Invitations, permissions, and shared access are planned for later development.",
     icon: UsersRound,
+  },
+  budgets: {
+    title: "Budgets",
+    description: "Plan monthly spending limits and track progress across your expense categories.",
+    nextStep: "Budget creation and progress tracking will be developed as a separate feature.",
+    icon: PieChart,
+  },
+  investments: {
+    title: "Investments",
+    description: "Organize holdings and review the long-term performance of your portfolio.",
+    nextStep: "Investment tracking and portfolio insights will be developed as a separate feature.",
+    icon: TrendingUp,
   },
   help: {
     title: "Help",

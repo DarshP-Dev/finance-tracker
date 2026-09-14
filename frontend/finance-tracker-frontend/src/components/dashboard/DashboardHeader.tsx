@@ -12,9 +12,10 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  PieChart,
   Search,
   Settings,
-  UsersRound,
+  TrendingUp,
   WalletCards,
 } from "lucide-react";
 import type { AuthResponse } from "@/lib/api";
@@ -65,15 +66,14 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
 
           <SidebarSection label="Main Menu">
             <SidebarButton active={activeView === "dashboard"} onClick={() => navigateTo("dashboard")} label="Dashboard" icon={<LayoutDashboard size={17} />} />
-            <SidebarButton active={activeView === "analytics"} onClick={() => navigateTo("analytics")} label="Analytics" icon={<BarChart3 size={17} />} />
             <SidebarButton active={activeView === "transactions"} onClick={() => navigateTo("transactions")} label="Transactions" icon={<WalletCards size={17} />} />
-            <SidebarButton active={activeView === "customer"} onClick={() => navigateTo("customer")} label="Customer" icon={<UsersRound size={17} />} />
+            <SidebarButton active={activeView === "analytics"} onClick={() => navigateTo("analytics")} label="Analytics" icon={<BarChart3 size={17} />} />
             <SidebarButton active={activeView === "chat"} onClick={() => navigateTo("chat")} label="Chat" icon={<MessageCircle size={17} />} />
           </SidebarSection>
 
-          <SidebarSection label="Account">
-            <SidebarButton active={activeView === "wallet"} onClick={() => navigateTo("wallet")} label="Wallet" icon={<WalletCards size={17} />} />
-            <SidebarButton active={activeView === "members"} onClick={() => navigateTo("members")} label="Members" icon={<UsersRound size={17} />} />
+          <SidebarSection label="Financial Planning">
+            <SidebarButton active={activeView === "budgets"} onClick={() => navigateTo("budgets")} label="Budgets" icon={<PieChart size={17} />} />
+            <SidebarButton active={activeView === "investments"} onClick={() => navigateTo("investments")} label="Investments" icon={<TrendingUp size={17} />} />
           </SidebarSection>
 
           <div className="mt-auto grid gap-2">
@@ -243,12 +243,11 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
           {isMobileNavOpen && (
             <nav id="mobile-navigation" aria-label="Mobile navigation" className="mt-4 grid grid-cols-2 gap-2 rounded-2xl border border-[#e4e0e7] bg-white p-3 lg:hidden">
               <MobileNavButton active={activeView === "dashboard"} label="Dashboard" onClick={() => navigateTo("dashboard")} />
-              <MobileNavButton active={activeView === "analytics"} label="Analytics" onClick={() => navigateTo("analytics")} />
               <MobileNavButton active={activeView === "transactions"} label="Transactions" onClick={() => navigateTo("transactions")} />
-              <MobileNavButton active={activeView === "customer"} label="Customer" onClick={() => navigateTo("customer")} />
+              <MobileNavButton active={activeView === "analytics"} label="Analytics" onClick={() => navigateTo("analytics")} />
               <MobileNavButton active={activeView === "chat"} label="Chat" onClick={() => navigateTo("chat")} />
-              <MobileNavButton active={activeView === "wallet"} label="Wallet" onClick={() => navigateTo("wallet")} />
-              <MobileNavButton active={activeView === "members"} label="Members" onClick={() => navigateTo("members")} />
+              <MobileNavButton active={activeView === "budgets"} label="Budgets" onClick={() => navigateTo("budgets")} />
+              <MobileNavButton active={activeView === "investments"} label="Investments" onClick={() => navigateTo("investments")} />
               <MobileNavButton active={activeView === "help"} label="Help" onClick={() => navigateTo("help")} />
               <MobileNavButton active={activeView === "settings"} label="Settings" onClick={() => navigateTo("settings")} />
             </nav>
@@ -311,6 +310,8 @@ function getViewLabel(view: AppView) {
     chat: "Chat",
     wallet: "Wallet",
     members: "Members",
+    budgets: "Budgets",
+    investments: "Investments",
     help: "Help",
     settings: "Settings",
   };

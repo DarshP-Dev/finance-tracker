@@ -6,6 +6,8 @@ export type AppView =
   | "chat"
   | "wallet"
   | "members"
+  | "budgets"
+  | "investments"
   | "help"
   | "settings";
 
@@ -17,6 +19,8 @@ export const appViewRoutes: Record<AppView, string> = {
   chat: "/chat",
   wallet: "/wallet",
   members: "/members",
+  budgets: "/budgets",
+  investments: "/investments",
   help: "/help",
   settings: "/settings",
 };
