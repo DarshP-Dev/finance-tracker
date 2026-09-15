@@ -91,8 +91,8 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
         </aside>
 
         <section className={isDarkMode ? "min-w-0 bg-[#17171a] px-4 py-4 sm:px-6 lg:px-6" : "min-w-0 bg-[#fbfbfc] px-4 py-4 sm:px-6 lg:px-6"}>
-          <header className={isDarkMode ? "flex flex-col gap-4 border-b border-[#2b292f] pb-4 lg:flex-row lg:items-center lg:justify-between" : "flex flex-col gap-4 border-b border-[#e5e1e8] pb-4 lg:flex-row lg:items-center lg:justify-between"}>
-            <div className="flex items-center gap-4">
+          <header className={isDarkMode ? "flex flex-col gap-4 border-b border-[#2b292f] pb-4 lg:flex-row lg:items-center" : "flex flex-col gap-4 border-b border-[#e5e1e8] pb-4 lg:flex-row lg:items-center"}>
+            <div className="relative flex w-full items-center justify-between gap-4 lg:w-auto lg:flex-none lg:justify-start">
               <button
                 type="button"
                 onClick={() => navigateTo("dashboard")}
@@ -101,14 +101,6 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
                 <Home size={16} />
                 Home
               </button>
-              <div className="hidden grid-cols-2 rounded-xl border border-[#e4e0e7] bg-white p-1 sm:grid lg:hidden">
-                <button type="button" onClick={() => navigateTo("dashboard")} className={activeView === "dashboard" ? activeTabClass : inactiveTabClass}>
-                  Dashboard
-                </button>
-                <button type="button" onClick={() => navigateTo("transactions")} className={activeView === "transactions" ? activeTabClass : inactiveTabClass}>
-                  Transactions
-                </button>
-              </div>
               <button
                 type="button"
                 aria-expanded={isMobileNavOpen}
@@ -119,12 +111,9 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
                 <Menu size={18} />
                 <span className="sr-only">Open navigation</span>
               </button>
-              <button className="hidden h-10 rounded-xl border border-[#e4e0e7] bg-white px-4 text-sm font-semibold text-[#ff5a1f] lg:block">
-                {getViewLabel(activeView)}
-              </button>
             </div>
 
-            <div className="flex flex-1 flex-col justify-end gap-3 sm:flex-row sm:items-center lg:max-w-[620px]">
+            <div className="flex min-w-0 flex-1 flex-col justify-end gap-3 sm:flex-row sm:items-center">
               <div className={isDarkMode ? "relative flex h-10 min-w-0 flex-1 items-center rounded-xl border border-[#343139] bg-[#1f1f23] px-4" : "relative flex h-10 min-w-0 flex-1 items-center rounded-xl border border-[#ece8ef] bg-white px-4"}>
                 <Search size={17} className="shrink-0 text-[#8d8792]" />
                 <input
@@ -296,27 +285,6 @@ function SidebarButton({ active, label, icon, onClick }: SidebarButtonProps) {
       {label}
     </button>
   );
-}
-
-const activeTabClass = "h-9 rounded-lg px-3 text-sm font-semibold bg-white text-[#ff5a1f] shadow-sm transition";
-const inactiveTabClass = "h-9 rounded-lg px-3 text-sm font-semibold text-[#67616d] transition hover:text-[#151515]";
-
-function getViewLabel(view: AppView) {
-  const labels: Record<AppView, string> = {
-    dashboard: "Dashboard",
-    analytics: "Analytics",
-    transactions: "Transactions",
-    customer: "Customer",
-    chat: "Chat",
-    wallet: "Wallet",
-    members: "Members",
-    budgets: "Budgets",
-    investments: "Investments",
-    help: "Help",
-    settings: "Settings",
-  };
-
-  return labels[view];
 }
 
 function MobileNavButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {

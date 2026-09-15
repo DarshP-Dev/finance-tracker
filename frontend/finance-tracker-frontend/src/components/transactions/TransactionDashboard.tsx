@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
@@ -36,10 +36,12 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>({});
+  const [maxTransactionAmount, setMaxTransactionAmount] = useState(0);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const hasLoadedTransactions = useRef(false);
 
   const loadTransactions = useCallback(async () => {
     setIsLoading(true);
@@ -54,13 +56,31 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
     }
   }, [filters]);
 
+  const loadMaxTransactionAmount = useCallback(async () => {
+    try {
+      const allTransactions = await fetchTransactions({});
+      setMaxTransactionAmount(Math.max(0, ...allTransactions.map((transaction) => transaction.amount)));
+    } catch {
+      setMaxTransactionAmount(0);
+    }
+  }, []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
+      hasLoadedTransactions.current = true;
       void loadTransactions();
-    }, 0);
+    }, hasLoadedTransactions.current ? 350 : 0);
 
     return () => window.clearTimeout(timeoutId);
   }, [loadTransactions]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadMaxTransactionAmount();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadMaxTransactionAmount]);
 
   useEffect(() => {
     function handleUnauthorized() {
@@ -96,7 +116,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
 
     try {
       await createTransaction(payload);
-      await loadTransactions();
+      await Promise.all([loadTransactions(), loadMaxTransactionAmount()]);
       setMessage("Transaction added.");
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -116,7 +136,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
     try {
       await updateTransaction(editingTransaction.id, payload);
       setEditingTransaction(null);
-      await loadTransactions();
+      await Promise.all([loadTransactions(), loadMaxTransactionAmount()]);
       setMessage("Transaction updated.");
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -135,7 +155,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
 
     try {
       await deleteTransaction(transaction.id);
-      await loadTransactions();
+      await Promise.all([loadTransactions(), loadMaxTransactionAmount()]);
       setMessage("Transaction deleted.");
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -165,13 +185,14 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
       ) : activeView === "settings" ? (
         <SettingsPage auth={auth} isDarkMode={isDarkMode} onAuthChange={onAuthChange} onDarkModeChange={setIsDarkMode} />
       ) : activeView === "transactions" ? (
-        <div className="grid gap-5 py-6 lg:grid-cols-[360px_1fr]">
-          <aside className="self-start rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
+        <div className="grid gap-5 py-6">
+          <section className="rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
             <div className="mb-4">
               <h2 className="text-lg font-semibold">Add Transaction</h2>
+              <p className="mt-1 text-sm text-[#667085]">Record income or expenses without leaving your transaction history.</p>
             </div>
-            <TransactionForm isSubmitting={isSubmitting} onSubmit={handleCreate} />
-          </aside>
+            <TransactionForm layout="horizontal" isSubmitting={isSubmitting} onSubmit={handleCreate} />
+          </section>
 
           <section className="min-w-0 overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm">
             <div className="grid border-b border-[#eeeaf1] md:grid-cols-3">
@@ -190,7 +211,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
               </div>
             </div>
 
-            <DateFilter filters={filters} onChange={setFilters} />
+            <DateFilter filters={filters} maxTransactionAmount={maxTransactionAmount} onChange={setFilters} />
 
             {message && (
               <div className="border-b border-[#dfe7f1] bg-[#f8fafc] px-4 py-3 text-sm text-[#344054]">

@@ -42,7 +42,6 @@ export type TransactionPayload = {
 };
 
 export type TransactionFilters = {
-  date?: string;
   startDate?: string;
   endDate?: string;
   category?: TransactionCategory | "";

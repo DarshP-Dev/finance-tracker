@@ -25,10 +25,10 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* A more compact desktop scale while preserving mobile readability and browser zoom. */
+/* A compact desktop scale while preserving mobile readability and browser zoom controls. */
 @media (min-width: 1024px) {
   html {
-    font-size: 93.75%;
+    font-size: 85%;
   }
 }
 
