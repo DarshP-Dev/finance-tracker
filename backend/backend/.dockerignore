@@ -1,0 +1,8 @@
+.local/
+target/
+*.log
+.idea/
+.vscode/
+start-dev.ps1
+mvnw.cmd
+HELP.md
