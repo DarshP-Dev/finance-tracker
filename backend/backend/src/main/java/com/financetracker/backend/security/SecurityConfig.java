@@ -54,6 +54,15 @@ public class SecurityConfig {
     public FilterRegistrationBean<ForwardedHeaderFilter> forwardedHeaderFilter() {
         FilterRegistrationBean<ForwardedHeaderFilter> registration =
                 new FilterRegistrationBean<>(new ForwardedHeaderFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<AuthRequestDiagnosticsFilter> authRequestDiagnosticsFilter() {
+        FilterRegistrationBean<AuthRequestDiagnosticsFilter> registration =
+                new FilterRegistrationBean<>(new AuthRequestDiagnosticsFilter());
+        registration.addUrlPatterns("/api/auth/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         return registration;
     }
