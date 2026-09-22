@@ -6,6 +6,7 @@ import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { BudgetPage } from "@/components/budgets/BudgetPage";
 import { FeaturePlaceholder } from "@/components/features/FeaturePlaceholder";
+import { InvestmentsPage } from "@/components/investments/InvestmentsPage";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 import { Button } from "@/components/ui/button";
 import { DateFilter } from "@/components/transactions/DateFilter";
@@ -229,6 +230,8 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
         </div>
       ) : activeView === "budgets" ? (
         <BudgetPage />
+      ) : activeView === "investments" ? (
+        <InvestmentsPage />
       ) : (
         <FeaturePlaceholder view={activeView} />
       )}

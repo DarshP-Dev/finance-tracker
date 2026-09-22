@@ -1,6 +1,7 @@
 import axios from "axios";
 import type { Budget, BudgetPayload } from "@/types/budgets";
 import type { DashboardData } from "@/types/dashboard";
+import type { Investment, InvestmentHolding, InvestmentPayload } from "@/types/investments";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
 
 export type AuthMode = "login" | "register";
@@ -130,6 +131,30 @@ export async function updateBudget(id: number, payload: BudgetPayload) {
 
 export async function deleteBudget(id: number) {
   await api.delete(`/api/budgets/${id}`);
+}
+
+export async function fetchInvestments() {
+  const response = await api.get<Investment[]>("/api/investments");
+  return response.data;
+}
+
+export async function fetchInvestmentHoldings() {
+  const response = await api.get<InvestmentHolding[]>("/api/investments/holdings");
+  return response.data;
+}
+
+export async function createInvestment(payload: InvestmentPayload) {
+  const response = await api.post<Investment>("/api/investments", payload);
+  return response.data;
+}
+
+export async function updateInvestment(id: number, payload: InvestmentPayload) {
+  const response = await api.put<Investment>(`/api/investments/${id}`, payload);
+  return response.data;
+}
+
+export async function deleteInvestment(id: number) {
+  await api.delete(`/api/investments/${id}`);
 }
 
 export async function verifyCurrentPassword(password: string) {
