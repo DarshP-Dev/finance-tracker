@@ -174,4 +174,31 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    @Query(value = """
+            select date_trunc('month', transaction_date)::date, type, sum(amount)
+            from transactions
+            where user_id = :userId and transaction_date between :startDate and :endDate
+            group by 1, type
+            order by 1
+            """, nativeQuery = true)
+    List<Object[]> sumMonthlyCashFlowBetweenDates(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query(value = """
+            select date_trunc('month', transaction_date)::date, sum(amount)
+            from transactions
+            where user_id = :userId and type = 'EXPENSE'
+                and transaction_date between :startDate and :endDate
+            group by 1
+            order by 1
+            """, nativeQuery = true)
+    List<Object[]> sumMonthlyExpensesBetweenDates(
+            @Param("userId") Long userId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

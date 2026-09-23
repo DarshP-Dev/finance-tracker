@@ -1,5 +1,6 @@
 import axios from "axios";
 import type { Budget, BudgetPayload } from "@/types/budgets";
+import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 import type { DashboardData } from "@/types/dashboard";
 import type { Investment, InvestmentHolding, InvestmentPayload } from "@/types/investments";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
@@ -111,6 +112,11 @@ export async function deleteTransaction(id: number) {
 
 export async function fetchDashboard(filters?: { startDate?: string; endDate?: string }) {
   const response = await api.get<DashboardData>("/api/dashboard", { params: filters });
+  return response.data;
+}
+
+export async function fetchAnalytics(period: AnalyticsPeriod, range?: { startDate: string; endDate: string }) {
+  const response = await api.get<AnalyticsData>("/api/analytics", { params: { period, ...range } });
   return response.data;
 }
 

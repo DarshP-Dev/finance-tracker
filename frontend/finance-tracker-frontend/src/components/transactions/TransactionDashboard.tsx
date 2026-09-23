@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { BudgetPage } from "@/components/budgets/BudgetPage";
+import { AnalyticsPage } from "@/components/analytics/AnalyticsPage";
 import { FeaturePlaceholder } from "@/components/features/FeaturePlaceholder";
 import { InvestmentsPage } from "@/components/investments/InvestmentsPage";
 import { SettingsPage } from "@/components/settings/SettingsPage";
@@ -230,6 +231,8 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
         </div>
       ) : activeView === "budgets" ? (
         <BudgetPage />
+      ) : activeView === "analytics" ? (
+        <AnalyticsPage />
       ) : activeView === "investments" ? (
         <InvestmentsPage />
       ) : (

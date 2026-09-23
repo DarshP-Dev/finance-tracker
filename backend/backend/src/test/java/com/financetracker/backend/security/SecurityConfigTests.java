@@ -6,7 +6,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.financetracker.backend.controllers.AuthController;
+import com.financetracker.backend.controllers.AnalyticsController;
 import com.financetracker.backend.controllers.DashboardController;
+import com.financetracker.backend.services.AnalyticsService;
 import com.financetracker.backend.services.AuthService;
 import com.financetracker.backend.services.DashboardService;
 import org.junit.jupiter.api.Test;
@@ -18,7 +20,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest(controllers = {AuthController.class, DashboardController.class})
+@WebMvcTest(controllers = {AuthController.class, DashboardController.class, AnalyticsController.class})
 @Import({SecurityConfig.class, JwtFilter.class})
 class SecurityConfigTests {
 
@@ -45,6 +47,9 @@ class SecurityConfigTests {
 
     @MockitoBean
     private DashboardService dashboardService;
+
+    @MockitoBean
+    private AnalyticsService analyticsService;
 
     @MockitoBean
     private JwtService jwtService;
@@ -77,6 +82,18 @@ class SecurityConfigTests {
     @Test
     void allowsDashboardWithAuthentication() throws Exception {
         mockMvc.perform(get("/api/dashboard").with(user("test@example.com")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsAnalyticsWithoutAuthentication() throws Exception {
+        mockMvc.perform(get("/api/analytics"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void allowsAnalyticsWithAuthentication() throws Exception {
+        mockMvc.perform(get("/api/analytics").with(user("test@example.com")))
                 .andExpect(status().isOk());
     }
 
