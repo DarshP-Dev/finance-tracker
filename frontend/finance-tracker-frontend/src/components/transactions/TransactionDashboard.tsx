@@ -12,18 +12,26 @@ import { SettingsPage } from "@/components/settings/SettingsPage";
 import { Button } from "@/components/ui/button";
 import { DateFilter } from "@/components/transactions/DateFilter";
 import { formatCurrency } from "@/components/transactions/formatters";
-import { TransactionForm } from "@/components/transactions/TransactionForm";
+import { RecurringTransactionsView } from "@/components/transactions/RecurringTransactionsView";
+import { TransactionForm, type TransactionFormSubmission } from "@/components/transactions/TransactionForm";
 import { TransactionTable } from "@/components/transactions/TransactionTable";
 import {
   clearStoredAuth,
+  createRecurringTransaction,
   createTransaction,
+  deleteRecurringTransaction,
   deleteTransaction,
   fetchTransactions,
+  getRecurringTransactions,
+  pauseRecurringTransaction,
+  resumeRecurringTransaction,
+  updateRecurringTransaction,
   updateTransaction,
   type AuthResponse,
 } from "@/lib/api";
 import { appViewRoutes, getAppView, type AppView } from "@/types/navigation";
-import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
+import type { RecurringTransaction } from "@/types/recurring-transactions";
+import type { Transaction, TransactionFilters } from "@/types/transactions";
 
 type TransactionDashboardProps = {
   auth: AuthResponse;
@@ -37,6 +45,16 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   const activeView = getAppView(pathname);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionTab, setTransactionTab] = useState<"transactions" | "recurring">("transactions");
+  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+  const [recurringLoading, setRecurringLoading] = useState(false);
+  const [recurringError, setRecurringError] = useState("");
+  const [recurringMessage, setRecurringMessage] = useState("");
+  const [recurringPendingId, setRecurringPendingId] = useState<number | null>(null);
+  const [showRecurringForm, setShowRecurringForm] = useState(false);
+  const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null);
+  const [recurringFormError, setRecurringFormError] = useState("");
+  const [transactionFormError, setTransactionFormError] = useState("");
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [maxTransactionAmount, setMaxTransactionAmount] = useState(0);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -67,6 +85,18 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
     }
   }, []);
 
+  const loadRecurringTransactions = useCallback(async () => {
+    setRecurringLoading(true);
+    setRecurringError("");
+    try {
+      setRecurringTransactions(await getRecurringTransactions());
+    } catch (error) {
+      setRecurringError(getErrorMessage(error));
+    } finally {
+      setRecurringLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       hasLoadedTransactions.current = true;
@@ -83,6 +113,14 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
 
     return () => window.clearTimeout(timeoutId);
   }, [loadMaxTransactionAmount]);
+
+  useEffect(() => {
+    if (activeView !== "transactions" || transactionTab !== "recurring") return;
+    const timeoutId = window.setTimeout(() => {
+      void loadRecurringTransactions();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeView, transactionTab, loadRecurringTransactions]);
 
   useEffect(() => {
     function handleUnauthorized() {
@@ -112,38 +150,104 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   const totalFlow = summary.income + summary.expenses;
   const expenseShare = totalFlow === 0 ? 0 : Math.round((summary.expenses / totalFlow) * 100);
 
-  async function handleCreate(payload: TransactionPayload) {
+  async function handleCreate(submission: TransactionFormSubmission): Promise<boolean> {
     setIsSubmitting(true);
     setMessage("");
+    setRecurringFormError("");
 
     try {
-      await createTransaction(payload);
-      await Promise.all([loadTransactions(), loadMaxTransactionAmount()]);
-      setMessage("Transaction added.");
+      if (submission.recurring) {
+        await createRecurringTransaction(submission.payload);
+        await loadRecurringTransactions();
+        setRecurringMessage("Recurring transaction added.");
+        setShowRecurringForm(false);
+        setTransactionTab("recurring");
+      } else {
+        await createTransaction(submission.payload);
+        await Promise.all([loadTransactions(), loadMaxTransactionAmount()]);
+        setMessage("Transaction added.");
+      }
+      return true;
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      if (submission.recurring && showRecurringForm) {
+        setRecurringFormError(getErrorMessage(error));
+      } else {
+        setMessage(getErrorMessage(error));
+      }
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  async function handleUpdate(payload: TransactionPayload) {
-    if (!editingTransaction) {
-      return;
-    }
+  async function handleUpdate(submission: TransactionFormSubmission): Promise<boolean> {
+    if (!editingTransaction || submission.recurring) return false;
 
     setIsSubmitting(true);
-    setMessage("");
+    setTransactionFormError("");
 
     try {
-      await updateTransaction(editingTransaction.id, payload);
+      await updateTransaction(editingTransaction.id, submission.payload);
       setEditingTransaction(null);
       await Promise.all([loadTransactions(), loadMaxTransactionAmount()]);
       setMessage("Transaction updated.");
+      return true;
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      setTransactionFormError(getErrorMessage(error));
+      return false;
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleRecurringUpdate(submission: TransactionFormSubmission): Promise<boolean> {
+    if (!editingRecurring || !submission.recurring) return false;
+    setIsSubmitting(true);
+    setRecurringFormError("");
+    try {
+      const updated = await updateRecurringTransaction(editingRecurring.id, submission.payload);
+      setRecurringTransactions((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setEditingRecurring(null);
+      setRecurringMessage("Recurring transaction updated.");
+      return true;
+    } catch (error) {
+      setRecurringFormError(getErrorMessage(error));
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleRecurringToggle(transaction: RecurringTransaction) {
+    setRecurringPendingId(transaction.id);
+    setRecurringError("");
+    setRecurringMessage("");
+    try {
+      const updated = transaction.active
+        ? await pauseRecurringTransaction(transaction.id)
+        : await resumeRecurringTransaction(transaction.id);
+      setRecurringTransactions((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setRecurringMessage(transaction.active ? "Recurring transaction paused." : "Recurring transaction resumed.");
+    } catch (error) {
+      setRecurringError(getErrorMessage(error));
+    } finally {
+      setRecurringPendingId(null);
+    }
+  }
+
+  async function handleRecurringDelete(transaction: RecurringTransaction) {
+    if (!window.confirm(`Delete recurring transaction ${transaction.description}? Past transactions will remain.`)) return;
+    setRecurringPendingId(transaction.id);
+    setRecurringError("");
+    setRecurringMessage("");
+    try {
+      await deleteRecurringTransaction(transaction.id);
+      setRecurringTransactions((current) => current.filter((item) => item.id !== transaction.id));
+      setRecurringMessage("Recurring transaction deleted.");
+    } catch (error) {
+      setRecurringError(getErrorMessage(error));
+    } finally {
+      setRecurringPendingId(null);
     }
   }
 
@@ -188,46 +292,84 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
         <SettingsPage auth={auth} isDarkMode={isDarkMode} onAuthChange={onAuthChange} onDarkModeChange={setIsDarkMode} />
       ) : activeView === "transactions" ? (
         <div className="grid gap-5 py-6">
-          <section className="rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold">Add Transaction</h2>
-              <p className="mt-1 text-sm text-[#667085]">Record income or expenses without leaving your transaction history.</p>
-            </div>
-            <TransactionForm layout="horizontal" isSubmitting={isSubmitting} onSubmit={handleCreate} />
-          </section>
+          <div role="tablist" aria-label="Transaction views" className="flex w-fit rounded-xl border border-[#dfe7f1] bg-white p-1 shadow-sm">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={transactionTab === "transactions"}
+              onClick={() => setTransactionTab("transactions")}
+              className={transactionTab === "transactions" ? "rounded-lg bg-[#195b4d] px-4 py-2 text-sm font-semibold text-white" : "rounded-lg px-4 py-2 text-sm font-semibold text-[#475467] hover:bg-[#f5f7fb]"}
+            >
+              Transactions
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={transactionTab === "recurring"}
+              onClick={() => setTransactionTab("recurring")}
+              className={transactionTab === "recurring" ? "rounded-lg bg-[#195b4d] px-4 py-2 text-sm font-semibold text-white" : "rounded-lg px-4 py-2 text-sm font-semibold text-[#475467] hover:bg-[#f5f7fb]"}
+            >
+              Recurring
+            </button>
+          </div>
 
-          <section className="min-w-0 overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm">
-            <div className="grid border-b border-[#eeeaf1] md:grid-cols-3">
-              <SummaryCell label="Income" value={formatCurrency(summary.income)} tone="income" />
-              <SummaryCell label="Expenses" value={formatCurrency(summary.expenses)} tone="expense" />
-              <SummaryCell label="Net" value={formatCurrency(net)} tone={net >= 0 ? "income" : "expense"} />
-            </div>
+          {transactionTab === "transactions" ? (
+            <>
+              <section className="rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold">Add Transaction</h2>
+                  <p className="mt-1 text-sm text-[#667085]">Record income or expenses without leaving your transaction history.</p>
+                </div>
+                <TransactionForm layout="horizontal" isSubmitting={isSubmitting} onSubmit={handleCreate} />
+              </section>
 
-            <div className="border-b border-[#dfe7f1] px-4 py-4">
-              <div className="mb-2 flex items-center justify-between text-sm">
-                <span className="font-medium text-[#344054]">Expense ratio</span>
-                <span className="font-semibold text-[#172033]">{expenseShare}%</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[#ecfdf3]">
-                <div className="h-full bg-[#f79009]" style={{ width: `${expenseShare}%` }} />
-              </div>
-            </div>
+              <section className="min-w-0 overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm">
+                <div className="grid border-b border-[#eeeaf1] md:grid-cols-3">
+                  <SummaryCell label="Income" value={formatCurrency(summary.income)} tone="income" />
+                  <SummaryCell label="Expenses" value={formatCurrency(summary.expenses)} tone="expense" />
+                  <SummaryCell label="Net" value={formatCurrency(net)} tone={net >= 0 ? "income" : "expense"} />
+                </div>
 
-            <DateFilter filters={filters} maxTransactionAmount={maxTransactionAmount} onChange={setFilters} />
+                <div className="border-b border-[#dfe7f1] px-4 py-4">
+                  <div className="mb-2 flex items-center justify-between text-sm">
+                    <span className="font-medium text-[#344054]">Expense ratio</span>
+                    <span className="font-semibold text-[#172033]">{expenseShare}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-[#ecfdf3]">
+                    <div className="h-full bg-[#f79009]" style={{ width: `${expenseShare}%` }} />
+                  </div>
+                </div>
 
-            {message && (
-              <div className="border-b border-[#dfe7f1] bg-[#f8fafc] px-4 py-3 text-sm text-[#344054]">
-                {message}
-              </div>
-            )}
+                <DateFilter filters={filters} maxTransactionAmount={maxTransactionAmount} onChange={setFilters} />
 
-            <TransactionTable
-              transactions={transactions}
-              isLoading={isLoading}
-              onEdit={setEditingTransaction}
-              onDelete={handleDelete}
+                {message && (
+                  <div role="status" className="border-b border-[#dfe7f1] bg-[#f8fafc] px-4 py-3 text-sm text-[#344054]">
+                    {message}
+                  </div>
+                )}
+
+                <TransactionTable
+                  transactions={transactions}
+                  isLoading={isLoading}
+                  onEdit={(transaction) => { setTransactionFormError(""); setEditingTransaction(transaction); }}
+                  onDelete={handleDelete}
+                />
+              </section>
+            </>
+          ) : (
+            <RecurringTransactionsView
+              transactions={recurringTransactions}
+              isLoading={recurringLoading}
+              error={recurringError}
+              message={recurringMessage}
+              pendingId={recurringPendingId}
+              onRetry={loadRecurringTransactions}
+              onAdd={() => { setRecurringFormError(""); setShowRecurringForm(true); }}
+              onEdit={(transaction) => { setRecurringFormError(""); setEditingRecurring(transaction); }}
+              onToggle={handleRecurringToggle}
+              onDelete={handleRecurringDelete}
             />
-          </section>
+          )}
         </div>
       ) : activeView === "budgets" ? (
         <BudgetPage />
@@ -252,10 +394,35 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
               key={editingTransaction.id}
               transaction={editingTransaction}
               isSubmitting={isSubmitting}
+              submitError={transactionFormError}
               onSubmit={handleUpdate}
               onCancel={() => setEditingTransaction(null)}
             />
           </div>
+        </div>
+      )}
+
+      {showRecurringForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/45 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="recurring-create-title" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <h2 id="recurring-create-title" className="text-lg font-semibold">Add recurring transaction</h2>
+              <Button type="button" variant="ghost" className="h-8 px-3" onClick={() => setShowRecurringForm(false)}>Close</Button>
+            </div>
+            <TransactionForm initialRecurring isSubmitting={isSubmitting} submitError={recurringFormError} onSubmit={handleCreate} onCancel={() => setShowRecurringForm(false)} />
+          </section>
+        </div>
+      )}
+
+      {editingRecurring && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/45 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="recurring-edit-title" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <h2 id="recurring-edit-title" className="text-lg font-semibold">Edit recurring transaction</h2>
+              <Button type="button" variant="ghost" className="h-8 px-3" onClick={() => setEditingRecurring(null)}>Close</Button>
+            </div>
+            <TransactionForm key={editingRecurring.id} recurringTransaction={editingRecurring} isSubmitting={isSubmitting} submitError={recurringFormError} onSubmit={handleRecurringUpdate} onCancel={() => setEditingRecurring(null)} />
+          </section>
         </div>
       )}
     </DashboardHeader>

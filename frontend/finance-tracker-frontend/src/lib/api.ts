@@ -3,6 +3,7 @@ import type { Budget, BudgetPayload } from "@/types/budgets";
 import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 import type { DashboardData } from "@/types/dashboard";
 import type { Investment, InvestmentHolding, InvestmentPayload } from "@/types/investments";
+import type { RecurringTransaction, RecurringTransactionPayload } from "@/types/recurring-transactions";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
 
 export type AuthMode = "login" | "register";
@@ -108,6 +109,45 @@ export async function updateTransaction(id: number, payload: TransactionPayload)
 
 export async function deleteTransaction(id: number) {
   await api.delete(`/api/transactions/${id}`);
+}
+
+export async function getRecurringTransactions() {
+  const response = await api.get<RecurringTransaction[]>("/api/recurring-transactions");
+  return response.data;
+}
+
+export async function getRecurringTransaction(id: number) {
+  const response = await api.get<RecurringTransaction>(`/api/recurring-transactions/${id}`);
+  return response.data;
+}
+
+export async function createRecurringTransaction(payload: RecurringTransactionPayload) {
+  const response = await api.post<RecurringTransaction>("/api/recurring-transactions", payload);
+  return response.data;
+}
+
+export async function updateRecurringTransaction(id: number, payload: RecurringTransactionPayload) {
+  const response = await api.put<RecurringTransaction>(`/api/recurring-transactions/${id}`, payload);
+  return response.data;
+}
+
+export async function deleteRecurringTransaction(id: number) {
+  await api.delete(`/api/recurring-transactions/${id}`);
+}
+
+export async function pauseRecurringTransaction(id: number) {
+  const response = await api.patch<RecurringTransaction>(`/api/recurring-transactions/${id}/pause`);
+  return response.data;
+}
+
+export async function resumeRecurringTransaction(id: number) {
+  const response = await api.patch<RecurringTransaction>(`/api/recurring-transactions/${id}/resume`);
+  return response.data;
+}
+
+export async function generateRecurringTransaction(id: number) {
+  const response = await api.post<Transaction>(`/api/recurring-transactions/${id}/generate`);
+  return response.data;
 }
 
 export async function fetchDashboard(filters?: { startDate?: string; endDate?: string }) {
