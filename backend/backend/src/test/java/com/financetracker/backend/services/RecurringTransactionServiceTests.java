@@ -59,7 +59,7 @@ class RecurringTransactionServiceTests {
     }
 
     @Test
-    void createsAnOwnedDefinitionWithTheStartDateAsItsFirstOccurrence() {
+    void createsTheFirstTransactionAndAdvancesTheSchedule() {
         when(recurringTransactionRepository.save(any(RecurringTransaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -68,9 +68,26 @@ class RecurringTransactionServiceTests {
         ArgumentCaptor<RecurringTransaction> captor = ArgumentCaptor.forClass(RecurringTransaction.class);
         verify(recurringTransactionRepository).save(captor.capture());
         assertThat(captor.getValue().getUser()).isSameAs(user);
-        assertThat(response.getNextOccurrence()).isEqualTo(START);
+        ArgumentCaptor<TransactionRequest> transactionCaptor = ArgumentCaptor.forClass(TransactionRequest.class);
+        verify(transactionService).createTransactionForUser(org.mockito.ArgumentMatchers.eq(user), transactionCaptor.capture());
+        assertThat(transactionCaptor.getValue().getDate()).isEqualTo(START);
+        assertThat(transactionCaptor.getValue().getType()).isEqualTo(TransactionType.EXPENSE);
+        assertThat(transactionCaptor.getValue().getAmount()).isEqualByComparingTo("22.99");
+        assertThat(captor.getValue().getLastGeneratedDate()).isEqualTo(START);
+        assertThat(response.getNextOccurrence()).isEqualTo(LocalDate.of(2026, 11, 12));
         assertThat(response.isActive()).isTrue();
-        verify(transactionService, never()).createTransactionForUser(any(), any());
+    }
+
+    @Test
+    void creatingASingleOccurrenceRecordsItAndClosesTheSchedule() {
+        when(recurringTransactionRepository.save(any(RecurringTransaction.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        RecurringTransactionResponse response = service.createRecurringTransaction(authentication, request(START, START));
+
+        verify(transactionService).createTransactionForUser(any(), any());
+        assertThat(response.getNextOccurrence()).isEqualTo(LocalDate.of(2026, 11, 12));
+        assertThat(response.isActive()).isFalse();
     }
 
     @Test

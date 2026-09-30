@@ -31,7 +31,7 @@ public class RecurringTransactionService {
         User user = authenticatedUserService.getCurrentUser(authentication);
         validate(request);
 
-        // The start date is the first occurrence. Creating a definition does not create a normal transaction.
+        // The first occurrence is recorded when the user creates the schedule.
         RecurringTransaction recurring = RecurringTransaction.builder()
                 .user(user)
                 .amount(request.getAmount())
@@ -45,7 +45,9 @@ public class RecurringTransactionService {
                 .endDate(request.getEndDate())
                 .build();
 
-        return toResponse(recurringTransactionRepository.save(recurring));
+        recurringTransactionRepository.save(recurring);
+        generateOccurrence(recurring);
+        return toResponse(recurring);
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +134,10 @@ public class RecurringTransactionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Recurring transaction has passed its end date");
         }
 
+        return generateOccurrence(recurring);
+    }
+
+    private TransactionResponse generateOccurrence(RecurringTransaction recurring) {
         LocalDate occurrence = recurring.getNextOccurrence();
         TransactionRequest request = TransactionRequest.builder()
                 .amount(recurring.getAmount())

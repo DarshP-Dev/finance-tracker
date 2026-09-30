@@ -102,7 +102,7 @@ export function TransactionForm({
         </Field>
       </div>
 
-      <div className={horizontal ? "xl:col-span-2" : undefined}>
+      <div className={horizontal ? "xl:col-span-2" : isRecurring ? "sm:col-span-2" : undefined}>
         <Field label="Category">
           <CategorySelector required value={category} onChange={setCategory} />
         </Field>
@@ -111,15 +111,24 @@ export function TransactionForm({
       <div className={horizontal ? "xl:col-span-2" : undefined}>
         <Field label={isRecurring ? "Start Date" : "Date"}>
           <Input required type="date" value={date} onChange={(event) => { setDate(event.target.value); setDateError(""); }} />
-          {isRecurring && <span className="text-xs font-normal text-[#667085]">First scheduled transaction. Creating a schedule does not add a transaction yet.</span>}
         </Field>
       </div>
 
-      <div className={horizontal ? "xl:col-span-2" : "sm:col-span-2"}>
-        <Field label="Merchant">
-          <Input value={merchant} onChange={(event) => setMerchant(event.target.value)} maxLength={150} />
-        </Field>
-      </div>
+      {isRecurring && (
+        <div className={horizontal ? "xl:col-span-2" : undefined}>
+          <Field label="End Date (Optional)">
+            <Input type="date" min={date} value={endDate} onChange={(event) => { setEndDate(event.target.value); setDateError(""); }} />
+          </Field>
+        </div>
+      )}
+
+      {!isRecurring && (
+        <div className={horizontal ? "xl:col-span-2" : "sm:col-span-2"}>
+          <Field label="Merchant">
+            <Input value={merchant} onChange={(event) => setMerchant(event.target.value)} maxLength={150} />
+          </Field>
+        </div>
+      )}
 
       {horizontal && !editing && !initialRecurring && (
         <RecurringControl checked={isRecurring} onChange={setIsRecurring} className="xl:col-span-2" />
@@ -138,6 +147,11 @@ export function TransactionForm({
       {isRecurring && (
         <>
           <div className={horizontal ? "xl:col-span-2" : undefined}>
+            <Field label="Merchant">
+              <Input value={merchant} onChange={(event) => setMerchant(event.target.value)} maxLength={150} />
+            </Field>
+          </div>
+          <div className={horizontal ? "xl:col-span-2" : undefined}>
             <Field label="Frequency">
               <Select value={frequency} onChange={(event) => setFrequency(event.target.value as RecurringFrequency)}>
                 <option value="WEEKLY">Weekly</option>
@@ -145,11 +159,6 @@ export function TransactionForm({
                 <option value="MONTHLY">Monthly</option>
                 <option value="YEARLY">Yearly</option>
               </Select>
-            </Field>
-          </div>
-          <div className={horizontal ? "xl:col-span-2" : undefined}>
-            <Field label="End Date (Optional)">
-              <Input type="date" min={date} value={endDate} onChange={(event) => { setEndDate(event.target.value); setDateError(""); }} />
             </Field>
           </div>
         </>
@@ -161,7 +170,7 @@ export function TransactionForm({
         </p>
       )}
 
-      <div className={horizontal ? "flex flex-col gap-2 sm:flex-row lg:justify-end xl:col-span-4" : "flex flex-col gap-2 sm:col-span-2 sm:flex-row"}>
+      <div className={horizontal ? isRecurring ? "flex flex-col gap-2 sm:flex-row sm:justify-center lg:col-span-2 xl:col-start-5 xl:col-span-4" : "flex flex-col gap-2 sm:flex-row lg:justify-end xl:col-span-4" : "flex flex-col gap-2 sm:col-span-2 sm:flex-row"}>
         <Button type="submit" disabled={isSubmitting} className="sm:min-w-[132px]">
           {isSubmitting ? "Saving" : editing ? "Save changes" : isRecurring ? "Add recurring" : "Add transaction"}
         </Button>
@@ -174,10 +183,7 @@ export function TransactionForm({
 function RecurringControl({ checked, className = "", onChange }: { checked: boolean; className?: string; onChange: (checked: boolean) => void }) {
   return (
     <label className={`flex items-center justify-between gap-3 rounded-xl border border-[#e4e0e7] px-3 py-3 text-sm font-semibold text-[#46404b] ${className}`}>
-      <span>
-        Recurring
-        <span className="mt-0.5 block text-xs font-normal text-[#77717d]">Create a schedule instead of a one-time transaction.</span>
-      </span>
+      <span>Recurring</span>
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-5 w-5 shrink-0 accent-[#195b4d]" />
     </label>
   );

@@ -158,8 +158,8 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
     try {
       if (submission.recurring) {
         await createRecurringTransaction(submission.payload);
-        await loadRecurringTransactions();
-        setRecurringMessage("Recurring transaction added.");
+        await Promise.all([loadRecurringTransactions(), loadTransactions(), loadMaxTransactionAmount()]);
+        setRecurringMessage("Recurring transaction and first charge added.");
         setShowRecurringForm(false);
         setTransactionTab("recurring");
       } else {

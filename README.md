@@ -44,8 +44,8 @@ update, and delete recurring definitions. `PATCH /{id}/pause` and `PATCH /{id}/r
 control whether a definition can generate. `POST /{id}/generate` creates exactly one
 ordinary transaction and returns it. There is no automatic scheduler yet.
 
-`startDate` is the first occurrence: creating a definition sets `nextOccurrence` to
-`startDate` but does not create a transaction. Each generate call uses the current
+`startDate` is the first occurrence: creating a definition also records one ordinary
+transaction on that date and advances `nextOccurrence`. Each later generate call uses the current
 `nextOccurrence` as the transaction date, then advances it. Monthly and yearly dates
 stay anchored to the original day (January 31 goes to February 28 and then March 31).
 Generation automatically deactivates a definition when the following occurrence
