@@ -8,9 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.financetracker.backend.controllers.AuthController;
 import com.financetracker.backend.controllers.AnalyticsController;
 import com.financetracker.backend.controllers.DashboardController;
+import com.financetracker.backend.controllers.RecurringTransactionController;
 import com.financetracker.backend.services.AnalyticsService;
 import com.financetracker.backend.services.AuthService;
 import com.financetracker.backend.services.DashboardService;
+import com.financetracker.backend.services.RecurringTransactionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,7 +22,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest(controllers = {AuthController.class, DashboardController.class, AnalyticsController.class})
+@WebMvcTest(controllers = {
+        AuthController.class, DashboardController.class, AnalyticsController.class, RecurringTransactionController.class
+})
 @Import({SecurityConfig.class, JwtFilter.class})
 class SecurityConfigTests {
 
@@ -50,6 +54,9 @@ class SecurityConfigTests {
 
     @MockitoBean
     private AnalyticsService analyticsService;
+
+    @MockitoBean
+    private RecurringTransactionService recurringTransactionService;
 
     @MockitoBean
     private JwtService jwtService;
@@ -95,6 +102,30 @@ class SecurityConfigTests {
     void allowsAnalyticsWithAuthentication() throws Exception {
         mockMvc.perform(get("/api/analytics").with(user("test@example.com")))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsRecurringTransactionsWithoutAuthentication() throws Exception {
+        mockMvc.perform(get("/api/recurring-transactions"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void rejectsInvalidRecurringTransactionRequests() throws Exception {
+        mockMvc.perform(post("/api/recurring-transactions")
+                        .with(user("test@example.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "amount": 0,
+                                  "category": "ENTERTAINMENT",
+                                  "type": "EXPENSE",
+                                  "description": "",
+                                  "frequency": "MONTHLY",
+                                  "startDate": "2026-10-12"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

@@ -37,6 +37,22 @@ Open http://localhost:3000. Keep both terminals running: the dashboard needs the
 backend on port 8080. If the backend was stopped, start it and click **Retry** on
 the dashboard. Sign in again if your previous session has expired.
 
+## Recurring transactions (Phase 1)
+
+Authenticated requests to `/api/recurring-transactions` can create, list, read,
+update, and delete recurring definitions. `PATCH /{id}/pause` and `PATCH /{id}/resume`
+control whether a definition can generate. `POST /{id}/generate` creates exactly one
+ordinary transaction and returns it. There is no automatic scheduler yet.
+
+`startDate` is the first occurrence: creating a definition sets `nextOccurrence` to
+`startDate` but does not create a transaction. Each generate call uses the current
+`nextOccurrence` as the transaction date, then advances it. Monthly and yearly dates
+stay anchored to the original day (January 31 goes to February 28 and then March 31).
+Generation automatically deactivates a definition when the following occurrence
+would be after `endDate`. Resuming does not backfill missed dates; manual generate
+calls advance one occurrence at a time. Editing the schedule moves the next
+occurrence past the most recently generated date so that date is never reused.
+
 ## Deploy with Vercel and Neon
 
 The repository is configured as one Vercel Services project. Vercel serves the
