@@ -26,7 +26,10 @@ import lombok.Setter;
 @Entity
 @Table(
         name = "recurring_transactions",
-        indexes = @Index(name = "idx_recurring_transactions_user_next", columnList = "user_id, next_occurrence")
+        indexes = {
+                @Index(name = "idx_recurring_transactions_user_next", columnList = "user_id, next_occurrence"),
+                @Index(name = "idx_recurring_transactions_due", columnList = "active, next_occurrence, id")
+        }
 )
 @Getter
 @Setter

@@ -37,21 +37,39 @@ Open http://localhost:3000. Keep both terminals running: the dashboard needs the
 backend on port 8080. If the backend was stopped, start it and click **Retry** on
 the dashboard. Sign in again if your previous session has expired.
 
-## Recurring transactions (Phase 1)
+## Recurring transactions
 
 Authenticated requests to `/api/recurring-transactions` can create, list, read,
 update, and delete recurring definitions. `PATCH /{id}/pause` and `PATCH /{id}/resume`
 control whether a definition can generate. `POST /{id}/generate` creates exactly one
-ordinary transaction and returns it. There is no automatic scheduler yet.
+ordinary transaction and returns it for debugging.
 
 `startDate` is the first occurrence: creating a definition also records one ordinary
-transaction on that date and advances `nextOccurrence`. Each later generate call uses the current
+transaction on that date and advances `nextOccurrence`. Automatic processing and later manual
+generation use the current
 `nextOccurrence` as the transaction date, then advances it. Monthly and yearly dates
 stay anchored to the original day (January 31 goes to February 28 and then March 31).
 Generation automatically deactivates a definition when the following occurrence
 would be after `endDate`. Resuming does not backfill missed dates; manual generate
 calls advance one occurrence at a time. Editing the schedule moves the next
 occurrence past the most recently generated date so that date is never reused.
+
+The backend checks active, due definitions daily at 3:00 a.m. in the configured zone
+and catches up missed occurrences from `nextOccurrence`. Each definition is locked and
+processed in its own database transaction. A failed definition does not stop the rest.
+At most 100 occurrences per definition are generated per run by default; any remaining
+due dates stay queued for the next run. Configure local or continuously running servers
+with `RECURRING_SCHEDULER_ENABLED`, `RECURRING_SCHEDULER_CRON` (Spring's six-field cron),
+`RECURRING_SCHEDULER_ZONE` (default `America/Toronto`), and
+`RECURRING_SCHEDULER_MAX_CATCH_UP` (default `100`).
+
+Vercel containers can stop between requests, so the in-process timer alone is not a
+reliable production trigger. `vercel.json` configures a daily request at 08:00 UTC to
+`/api/internal/recurring/process-due`. Set a long random `CRON_SECRET` in Vercel; the
+endpoint refuses requests without its matching `Authorization: Bearer` header. Set
+`RECURRING_SCHEDULER_ENABLED=false` on Vercel to use only that external trigger.
+Vercel runs configured cron jobs only on production deployments. Verify the cron appears
+in the Vercel dashboard after deployment and that its first invocation succeeds.
 
 ## Deploy with Vercel and Neon
 

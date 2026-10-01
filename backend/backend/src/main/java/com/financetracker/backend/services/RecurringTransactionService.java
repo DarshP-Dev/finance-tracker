@@ -137,8 +137,38 @@ public class RecurringTransactionService {
         return generateOccurrence(recurring);
     }
 
+    /** Called through the Spring proxy so each definition has its own transaction and row lock. */
+    @Transactional
+    public DueProcessingResult processDueRecurringTransaction(Long id, LocalDate today, int maxCatchUp) {
+        if (maxCatchUp < 1) {
+            throw new IllegalArgumentException("maxCatchUp must be positive");
+        }
+        RecurringTransaction recurring = recurringTransactionRepository.findByIdForUpdate(id).orElse(null);
+        if (recurring == null || !recurring.isActive() || recurring.getNextOccurrence().isAfter(today)) {
+            return new DueProcessingResult(0, false, false);
+        }
+        if (pastEndDate(recurring)) {
+            recurring.setActive(false);
+            return new DueProcessingResult(0, false, true);
+        }
+
+        int generated = 0;
+        while (recurring.isActive() && !recurring.getNextOccurrence().isAfter(today) && generated < maxCatchUp) {
+            generateOccurrence(recurring);
+            generated++;
+        }
+        boolean limitReached = recurring.isActive() && !recurring.getNextOccurrence().isAfter(today);
+        return new DueProcessingResult(generated, limitReached, !recurring.isActive());
+    }
+
+    public record DueProcessingResult(int generated, boolean limitReached, boolean expired) {
+    }
+
     private TransactionResponse generateOccurrence(RecurringTransaction recurring) {
         LocalDate occurrence = recurring.getNextOccurrence();
+        if (recurring.getLastGeneratedDate() != null && !occurrence.isAfter(recurring.getLastGeneratedDate())) {
+            throw new IllegalStateException("Recurring occurrence has already been generated");
+        }
         TransactionRequest request = TransactionRequest.builder()
                 .amount(recurring.getAmount())
                 .category(recurring.getCategory())

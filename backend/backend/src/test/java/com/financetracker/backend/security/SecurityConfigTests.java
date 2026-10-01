@@ -9,10 +9,12 @@ import com.financetracker.backend.controllers.AuthController;
 import com.financetracker.backend.controllers.AnalyticsController;
 import com.financetracker.backend.controllers.DashboardController;
 import com.financetracker.backend.controllers.RecurringTransactionController;
+import com.financetracker.backend.controllers.RecurringCronController;
 import com.financetracker.backend.services.AnalyticsService;
 import com.financetracker.backend.services.AuthService;
 import com.financetracker.backend.services.DashboardService;
 import com.financetracker.backend.services.RecurringTransactionService;
+import com.financetracker.backend.services.RecurringTransactionProcessor;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,12 +22,15 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(controllers = {
-        AuthController.class, DashboardController.class, AnalyticsController.class, RecurringTransactionController.class
+        AuthController.class, DashboardController.class, AnalyticsController.class,
+        RecurringTransactionController.class, RecurringCronController.class
 })
 @Import({SecurityConfig.class, JwtFilter.class})
+@TestPropertySource(properties = "CRON_SECRET=test-cron-secret")
 class SecurityConfigTests {
 
     private static final String REGISTER_REQUEST = """
@@ -57,6 +62,31 @@ class SecurityConfigTests {
 
     @MockitoBean
     private RecurringTransactionService recurringTransactionService;
+
+    @MockitoBean
+    private RecurringTransactionProcessor recurringTransactionProcessor;
+
+    @Test
+    void cronEndpointRejectsMissingOrIncorrectSecret() throws Exception {
+        mockMvc.perform(get(RecurringCronController.PATH))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get(RecurringCronController.PATH)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer wrong-secret"))
+                .andExpect(status().isUnauthorized());
+        org.mockito.Mockito.verifyNoInteractions(recurringTransactionProcessor);
+    }
+
+    @Test
+    void cronEndpointAcceptsConfiguredSecret() throws Exception {
+        org.mockito.Mockito.when(recurringTransactionProcessor.processDueRecurringTransactions())
+                .thenReturn(new RecurringTransactionProcessor.ProcessingResult(1, 1, 0));
+
+        mockMvc.perform(get(RecurringCronController.PATH)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer test-cron-secret"))
+                .andExpect(status().isOk());
+
+        org.mockito.Mockito.verify(recurringTransactionProcessor).processDueRecurringTransactions();
+    }
 
     @MockitoBean
     private JwtService jwtService;
