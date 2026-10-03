@@ -41,6 +41,14 @@ public class RecurringForecastService {
     public RecurringForecastResponse getForecast(
             Authentication authentication, LocalDate from, LocalDate to
     ) {
+        return getForecastWithUpcoming(authentication, from, to).forecast();
+    }
+
+    /** Shares one projection between summary rules and upcoming-occurrence rules. */
+    @Transactional(readOnly = true)
+    public ForecastWithUpcoming getForecastWithUpcoming(
+            Authentication authentication, LocalDate from, LocalDate to
+    ) {
         Projection projection = project(authentication, from, to);
         BigDecimal income = BigDecimal.ZERO;
         BigDecimal expenses = BigDecimal.ZERO;
@@ -55,9 +63,12 @@ public class RecurringForecastService {
                 expenseCount++;
             }
         }
-        return new RecurringForecastResponse(projection.from(), projection.to(), income, expenses,
-                income.subtract(expenses), incomeCount, expenseCount);
+        return new ForecastWithUpcoming(new RecurringForecastResponse(projection.from(), projection.to(), income, expenses,
+                income.subtract(expenses), incomeCount, expenseCount), List.copyOf(projection.occurrences()));
     }
+
+    public record ForecastWithUpcoming(RecurringForecastResponse forecast,
+                                      List<UpcomingRecurringTransactionResponse> upcoming) {}
 
     private Projection project(Authentication authentication, LocalDate requestedFrom, LocalDate requestedTo) {
         LocalDate from = requestedFrom == null ? LocalDate.now(clock) : requestedFrom;
