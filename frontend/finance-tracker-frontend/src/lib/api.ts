@@ -3,7 +3,7 @@ import type { Budget, BudgetPayload } from "@/types/budgets";
 import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 import type { DashboardData } from "@/types/dashboard";
 import type { Investment, InvestmentHolding, InvestmentPayload } from "@/types/investments";
-import type { RecurringTransaction, RecurringTransactionPayload } from "@/types/recurring-transactions";
+import type { RecurringForecast, RecurringForecastRange, RecurringTransaction, RecurringTransactionPayload, UpcomingRecurringTransaction } from "@/types/recurring-transactions";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
 
 export type AuthMode = "login" | "register";
@@ -113,6 +113,16 @@ export async function deleteTransaction(id: number) {
 
 export async function getRecurringTransactions() {
   const response = await api.get<RecurringTransaction[]>("/api/recurring-transactions");
+  return response.data;
+}
+
+export async function getUpcomingRecurringTransactions(range?: RecurringForecastRange) {
+  const response = await api.get<UpcomingRecurringTransaction[]>("/api/recurring-transactions/upcoming", { params: range });
+  return response.data;
+}
+
+export async function getRecurringForecast(range?: RecurringForecastRange) {
+  const response = await api.get<RecurringForecast>("/api/recurring-transactions/forecast", { params: range });
   return response.data;
 }
 

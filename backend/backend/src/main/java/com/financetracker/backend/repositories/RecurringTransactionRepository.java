@@ -17,6 +17,11 @@ public interface RecurringTransactionRepository extends JpaRepository<RecurringT
 
     Optional<RecurringTransaction> findByIdAndUserId(Long id, Long userId);
 
+    @Query("select r from RecurringTransaction r where r.user.id = :userId and r.active = true "
+            + "and r.nextOccurrence <= :to and (r.endDate is null or r.endDate >= :from)")
+    List<RecurringTransaction> findForecastCandidates(
+            @Param("userId") Long userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
+
     @Query("select r.id from RecurringTransaction r where r.active = true and r.nextOccurrence <= :today "
             + "and r.id > :afterId order by r.id")
     List<Long> findDueIds(@Param("today") LocalDate today, @Param("afterId") Long afterId, Pageable pageable);

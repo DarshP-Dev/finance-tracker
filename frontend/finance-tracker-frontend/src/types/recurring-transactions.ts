@@ -28,6 +28,29 @@ export type RecurringTransactionPayload = {
   endDate: string | null;
 };
 
+export type UpcomingRecurringTransaction = {
+  recurringTransactionId: number;
+  description: string;
+  merchant: string | null;
+  amount: number;
+  category: TransactionCategory;
+  type: TransactionType;
+  frequency: RecurringFrequency;
+  scheduledDate: string;
+};
+
+export type RecurringForecast = {
+  from: string;
+  to: string;
+  expectedIncome: number;
+  expectedExpenses: number;
+  netCashFlow: number;
+  incomeOccurrenceCount: number;
+  expenseOccurrenceCount: number;
+};
+
+export type RecurringForecastRange = { from?: string; to?: string };
+
 export const recurringFrequencyLabels: Record<RecurringFrequency, string> = {
   WEEKLY: "Weekly",
   BIWEEKLY: "Biweekly",

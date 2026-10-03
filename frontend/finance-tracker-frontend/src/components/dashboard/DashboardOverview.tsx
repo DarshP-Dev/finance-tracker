@@ -6,6 +6,7 @@ import { MonthlyTrendChart } from "@/components/dashboard/MonthlyTrendChart";
 import { RecentTransactionsCard } from "@/components/dashboard/RecentTransactionsCard";
 import { SpendingPieChart } from "@/components/dashboard/SpendingPieChart";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
+import { UpcomingTransactionsCard } from "@/components/dashboard/UpcomingTransactionsCard";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/components/transactions/formatters";
 import { fetchDashboard, fetchTransactions, type AuthResponse } from "@/lib/api";
@@ -148,6 +149,7 @@ export function DashboardOverview({ auth }: DashboardOverviewProps) {
       </div>
 
       <RecentTransactionsCard transactions={transactions} />
+      <UpcomingTransactionsCard />
     </div>
   );
 }

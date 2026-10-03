@@ -71,6 +71,21 @@ endpoint refuses requests without its matching `Authorization: Bearer` header. S
 Vercel runs configured cron jobs only on production deployments. Verify the cron appears
 in the Vercel dashboard after deployment and that its first invocation succeeds.
 
+### Upcoming recurring transactions
+
+The Transactions page has an **Upcoming** tab with period filters and projected
+income, expenses, and net cash flow. The Dashboard shows the next five projected
+occurrences, with a link to the full Upcoming view. These amounts cover known active
+recurring schedules only; they are not an account balance or recorded transactions.
+
+Authenticated `GET /api/recurring-transactions/upcoming` returns individual projected
+occurrences, and `GET /api/recurring-transactions/forecast` returns period totals and
+counts. Both accept optional ISO `from` and `to` dates. The default is today through
+30 days later, inclusive. Ranges must be ordered and no longer than 12 months.
+Projection begins at each schedule's `nextOccurrence`, uses the same calendar rules
+as actual generation, includes occurrences on `endDate`, and excludes paused schedules.
+These GET endpoints never generate transactions or update recurring definitions.
+
 ## Deploy with Vercel and Neon
 
 The repository is configured as one Vercel Services project. Vercel serves the

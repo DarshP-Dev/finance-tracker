@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { DateFilter } from "@/components/transactions/DateFilter";
 import { formatCurrency } from "@/components/transactions/formatters";
 import { RecurringTransactionsView } from "@/components/transactions/RecurringTransactionsView";
+import { UpcomingRecurringView } from "@/components/transactions/UpcomingRecurringView";
 import { TransactionForm, type TransactionFormSubmission } from "@/components/transactions/TransactionForm";
 import { TransactionTable } from "@/components/transactions/TransactionTable";
 import {
@@ -45,7 +46,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   const activeView = getAppView(pathname);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [transactionTab, setTransactionTab] = useState<"transactions" | "recurring">("transactions");
+  const [transactionTab, setTransactionTab] = useState<"transactions" | "recurring" | "upcoming">("transactions");
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
   const [recurringLoading, setRecurringLoading] = useState(false);
   const [recurringError, setRecurringError] = useState("");
@@ -123,6 +124,15 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   }, [activeView, transactionTab, loadRecurringTransactions]);
 
   useEffect(() => {
+    if (activeView !== "transactions") return;
+    const timeoutId = window.setTimeout(() => {
+      const requestedTab = new URLSearchParams(window.location.search).get("tab");
+      setTransactionTab(requestedTab === "recurring" || requestedTab === "upcoming" ? requestedTab : "transactions");
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeView, pathname]);
+
+  useEffect(() => {
     function handleUnauthorized() {
       onSignOut();
     }
@@ -161,7 +171,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
         await Promise.all([loadRecurringTransactions(), loadTransactions(), loadMaxTransactionAmount()]);
         setRecurringMessage("Recurring transaction and first charge added.");
         setShowRecurringForm(false);
-        setTransactionTab("recurring");
+        handleTransactionTabChange("recurring");
       } else {
         await createTransaction(submission.payload);
         await Promise.all([loadTransactions(), loadMaxTransactionAmount()]);
@@ -278,6 +288,11 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
     router.push(appViewRoutes[view]);
   }
 
+  function handleTransactionTabChange(tab: "transactions" | "recurring" | "upcoming") {
+    setTransactionTab(tab);
+    router.replace(tab === "transactions" ? "/transactions" : `/transactions?tab=${tab}`, { scroll: false });
+  }
+
   return (
     <DashboardHeader
       auth={auth}
@@ -292,12 +307,12 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
         <SettingsPage auth={auth} isDarkMode={isDarkMode} onAuthChange={onAuthChange} onDarkModeChange={setIsDarkMode} />
       ) : activeView === "transactions" ? (
         <div className="grid gap-5 py-6">
-          <div role="tablist" aria-label="Transaction views" className="flex w-fit rounded-xl border border-[#dfe7f1] bg-white p-1 shadow-sm">
+          <div role="tablist" aria-label="Transaction views" className="flex max-w-full flex-wrap rounded-xl border border-[#dfe7f1] bg-white p-1 shadow-sm">
             <button
               type="button"
               role="tab"
               aria-selected={transactionTab === "transactions"}
-              onClick={() => setTransactionTab("transactions")}
+              onClick={() => handleTransactionTabChange("transactions")}
               className={transactionTab === "transactions" ? "rounded-lg bg-[#195b4d] px-4 py-2 text-sm font-semibold text-white" : "rounded-lg px-4 py-2 text-sm font-semibold text-[#475467] hover:bg-[#f5f7fb]"}
             >
               Transactions
@@ -306,10 +321,19 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
               type="button"
               role="tab"
               aria-selected={transactionTab === "recurring"}
-              onClick={() => setTransactionTab("recurring")}
+              onClick={() => handleTransactionTabChange("recurring")}
               className={transactionTab === "recurring" ? "rounded-lg bg-[#195b4d] px-4 py-2 text-sm font-semibold text-white" : "rounded-lg px-4 py-2 text-sm font-semibold text-[#475467] hover:bg-[#f5f7fb]"}
             >
               Recurring
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={transactionTab === "upcoming"}
+              onClick={() => handleTransactionTabChange("upcoming")}
+              className={transactionTab === "upcoming" ? "rounded-lg bg-[#195b4d] px-4 py-2 text-sm font-semibold text-white" : "rounded-lg px-4 py-2 text-sm font-semibold text-[#475467] hover:bg-[#f5f7fb]"}
+            >
+              Upcoming
             </button>
           </div>
 
@@ -356,7 +380,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
                 />
               </section>
             </>
-          ) : (
+          ) : transactionTab === "recurring" ? (
             <RecurringTransactionsView
               transactions={recurringTransactions}
               isLoading={recurringLoading}
@@ -369,6 +393,8 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
               onToggle={handleRecurringToggle}
               onDelete={handleRecurringDelete}
             />
+          ) : (
+            <UpcomingRecurringView />
           )}
         </div>
       ) : activeView === "budgets" ? (

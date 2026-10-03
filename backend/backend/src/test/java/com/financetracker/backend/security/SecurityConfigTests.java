@@ -14,7 +14,9 @@ import com.financetracker.backend.services.AnalyticsService;
 import com.financetracker.backend.services.AuthService;
 import com.financetracker.backend.services.DashboardService;
 import com.financetracker.backend.services.RecurringTransactionService;
+import com.financetracker.backend.services.RecurringForecastService;
 import com.financetracker.backend.services.RecurringTransactionProcessor;
+import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -62,6 +64,47 @@ class SecurityConfigTests {
 
     @MockitoBean
     private RecurringTransactionService recurringTransactionService;
+
+    @MockitoBean
+    private RecurringForecastService recurringForecastService;
+
+    @Test
+    void upcomingAndForecastRequireAuthentication() throws Exception {
+        mockMvc.perform(get("/api/recurring-transactions/upcoming"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/recurring-transactions/forecast"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void authenticatedUsersCanReadUpcomingAndForecast() throws Exception {
+        mockMvc.perform(get("/api/recurring-transactions/upcoming")
+                        .with(user("owner@example.com")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/recurring-transactions/forecast")
+                        .with(user("owner@example.com")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void upcomingAndForecastAcceptIsoDateRanges() throws Exception {
+        LocalDate from = LocalDate.of(2026, 10, 1);
+        LocalDate to = LocalDate.of(2026, 10, 31);
+        mockMvc.perform(get("/api/recurring-transactions/upcoming")
+                        .with(user("owner@example.com"))
+                        .param("from", "2026-10-01")
+                        .param("to", "2026-10-31"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/recurring-transactions/forecast")
+                        .with(user("owner@example.com"))
+                        .param("from", "2026-10-01")
+                        .param("to", "2026-10-31"))
+                .andExpect(status().isOk());
+        org.mockito.Mockito.verify(recurringForecastService)
+                .getUpcoming(org.mockito.ArgumentMatchers.any(), org.mockito.Mockito.eq(from), org.mockito.Mockito.eq(to));
+        org.mockito.Mockito.verify(recurringForecastService)
+                .getForecast(org.mockito.ArgumentMatchers.any(), org.mockito.Mockito.eq(from), org.mockito.Mockito.eq(to));
+    }
 
     @MockitoBean
     private RecurringTransactionProcessor recurringTransactionProcessor;
