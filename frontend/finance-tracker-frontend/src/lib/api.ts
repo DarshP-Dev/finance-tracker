@@ -2,6 +2,7 @@ import axios from "axios";
 import type { Budget, BudgetPayload } from "@/types/budgets";
 import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 import type { DashboardData } from "@/types/dashboard";
+import type { FinancialInsightsResponse } from "@/types/financial-insights";
 import type { Investment, InvestmentHolding, InvestmentPayload } from "@/types/investments";
 import type { RecurringForecast, RecurringForecastRange, RecurringTransaction, RecurringTransactionPayload, UpcomingRecurringTransaction } from "@/types/recurring-transactions";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
@@ -167,6 +168,11 @@ export async function fetchDashboard(filters?: { startDate?: string; endDate?: s
 
 export async function fetchAnalytics(period: AnalyticsPeriod, range?: { startDate: string; endDate: string }) {
   const response = await api.get<AnalyticsData>("/api/analytics", { params: { period, ...range } });
+  return response.data;
+}
+
+export async function getFinancialInsights(signal?: AbortSignal) {
+  const response = await api.get<FinancialInsightsResponse>("/api/financial-insights", { signal });
   return response.data;
 }
 

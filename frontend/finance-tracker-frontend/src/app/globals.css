@@ -119,3 +119,19 @@ button:focus-visible, select:focus-visible {
 .dark-shell .shadow-xl {
   box-shadow: none;
 }
+
+/* Preserve distinct, readable insight badges within the existing dark shell. */
+.dark-shell .insight-severity[data-severity="INFO"] {
+  background-color: #343139;
+  color: #e4e0e7 !important;
+}
+
+.dark-shell .insight-severity[data-severity="POSITIVE"] {
+  background-color: #123c2c;
+  color: #86efac !important;
+}
+
+.dark-shell .insight-severity[data-severity="WARNING"] {
+  background-color: #482d13;
+  color: #fcd34d !important;
+}

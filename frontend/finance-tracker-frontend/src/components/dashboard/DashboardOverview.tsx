@@ -7,6 +7,7 @@ import { RecentTransactionsCard } from "@/components/dashboard/RecentTransaction
 import { SpendingPieChart } from "@/components/dashboard/SpendingPieChart";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { UpcomingTransactionsCard } from "@/components/dashboard/UpcomingTransactionsCard";
+import { FinancialInsightsSection } from "@/components/insights/FinancialInsightsSection";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/components/transactions/formatters";
 import { fetchDashboard, fetchTransactions, type AuthResponse } from "@/lib/api";
@@ -18,6 +19,13 @@ type DashboardOverviewProps = {
 };
 
 export function DashboardOverview({ auth }: DashboardOverviewProps) {
+  return <>
+    <DashboardReport auth={auth} />
+    <div className="pb-6"><FinancialInsightsSection preview /></div>
+  </>;
+}
+
+function DashboardReport({ auth }: DashboardOverviewProps) {
   const defaultRange = getDefaultDateRange();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, ArrowUpRight, CalendarDays, TrendingDown, TrendingUp } from "lucide-react";
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
@@ -9,6 +9,7 @@ import {
 import { fetchAnalytics } from "@/lib/api";
 import { formatCurrency } from "@/components/transactions/formatters";
 import { Input } from "@/components/ui/input";
+import { FinancialInsightsSection } from "@/components/insights/FinancialInsightsSection";
 import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 
 const periods: { value: AnalyticsPeriod; label: string }[] = [
@@ -74,6 +75,7 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const hasScrolledToInsights = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -86,6 +88,19 @@ export function AnalyticsPage() {
     }, 0);
     return () => { active = false; window.clearTimeout(timeout); };
   }, [period, customRange, retry]);
+
+  useEffect(() => {
+    if (loading || hasScrolledToInsights.current || window.location.hash !== "#financial-insights") return;
+    // Charts above the section occupy space after the report loads. Settle the
+    // initial anchor then, without moving the reader on subsequent filter changes.
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById("financial-insights");
+      target?.scrollIntoView({ block: "start" });
+      target?.focus({ preventScroll: true });
+      hasScrolledToInsights.current = true;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading]);
 
   const selectPeriod = (value: AnalyticsPeriod) => {
     if (value === "CUSTOM") {
@@ -243,6 +258,7 @@ export function AnalyticsPage() {
         </Panel>
       </div>
     </>}
+    <FinancialInsightsSection />
     <div className="flex justify-center pt-4"><button type="button" onClick={() => document.getElementById("analytics-top")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="flex h-14 w-14 flex-col items-center justify-center rounded-full border border-[#e4e0e7] bg-white text-[#ff5a1f] shadow-sm transition hover:border-[#ff5a1f] hover:bg-[#fff3ed]" aria-label="Back to top"><ArrowUp size={19} /><span className="text-xs font-semibold">Top</span></button></div>
   </div>;
 }
