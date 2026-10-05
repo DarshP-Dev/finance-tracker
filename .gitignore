@@ -1,0 +1,9 @@
+# Local credentials and API keys; configure production secrets in the environment.
+.env
+.env.*
+.local/
+
+# Optional private Spring configuration overrides.
+application-local.properties
+application-local.yml
+application-local.yaml

@@ -5,6 +5,7 @@ import { ArrowRight, Info, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getFinancialInsights } from "@/lib/api";
 import { FinancialInsightCard } from "@/components/insights/FinancialInsightCard";
+import { FinancialInsightsSummary } from "@/components/insights/FinancialInsightsSummary";
 import type { FinancialInsight } from "@/types/financial-insights";
 
 export function FinancialInsightsSection({ preview = false }: { preview?: boolean }) {
@@ -69,6 +70,8 @@ export function FinancialInsightsSection({ preview = false }: { preview?: boolea
           <RefreshCw size={14} aria-hidden="true" /> Refresh insights
         </button>}
       </div>
+
+      {!preview && <FinancialInsightsSummary key={retry} />}
 
       <div className="mt-5" aria-busy={loading} aria-live="polite">
         {loading ? (

@@ -29,3 +29,12 @@ export type FinancialInsightsResponse = {
   generatedAt: string;
   insights: FinancialInsight[];
 };
+
+export type FinancialInsightsSummaryResponse = {
+  summary: string | null;
+  generatedAt: string;
+  sourceInsightCount: number;
+  aiGenerated: boolean;
+  status: "AVAILABLE" | "DISABLED" | "EMPTY" | "DETERMINISTIC" | "UNAVAILABLE" | "COOLDOWN";
+  retryAfterSeconds: number;
+};

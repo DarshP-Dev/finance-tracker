@@ -156,6 +156,8 @@ The frontend is intentionally deferred until Financial Insights Phase 2.
 
 ## Deploy with Vercel and Neon
 
+Financial Insights Phase 3 is optional; its configuration is described below.
+
 The repository is configured as one Vercel Services project. Vercel serves the
 Next.js application from `frontend/finance-tracker-frontend` and runs the Spring
 Boot API from `backend/backend` as a Java 21 container. Requests under `/api/*`
@@ -188,3 +190,84 @@ overridden through Spring's standard environment variables:
 
 `CORS_ALLOWED_ORIGINS` continues to default to `http://localhost:3000` for local
 development. Production and preview deployments use the shared Vercel origin.
+
+## Financial Insights Phase 3: optional Gemini summary
+
+`GET /api/financial-insights/summary` uses the existing JWT identity and canonical
+`FinancialInsightsService`. It never accepts a user ID or writes financial records.
+`GET /api/financial-insights`, its calculations and ordering remain unchanged.
+The Analytics page adds an independently loaded summary above the source cards;
+the Dashboard remains unchanged. There is no chatbot, advice, price feed or history table.
+
+Gemini sits behind `InsightSummaryClient`; the implementation uses Java's HTTP
+client and the [Gemini generateContent API](https://ai.google.dev/api/generate-content)
+with [structured JSON output](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).
+The configurable default is `gemini-3.5-flash-lite`. No provider SDK is required.
+The only user financial data sent is the curated list of **type, severity, title,
+and message**. Upcoming recurring descriptions are replaced with generic wording.
+Raw transaction history, account identity, email, IDs, JWTs, repositories, metrics
+not already present in messages, and investment tickers are not sent.
+
+System instructions are separate from the serialized insight data, which is
+explicitly untrusted. The prompt asks for 2–4 sentences, approximately 50–120 words,
+without recalculation, invented numbers, recommendations, bank-access claims,
+market-price claims or predictions beyond known recurring schedules. The server
+requires one JSON `summary` string, rejects truncation/refusals/malformed output,
+caps length, checks numerical values including signs and units against source
+messages, and rejects common advice/markup/link patterns. These checks reduce
+risk; they cannot prove semantic accuracy. The source cards remain authoritative,
+and the UI explicitly labels AI-generated wording and its limitations.
+
+Configure **backend-only environment variables**, then restart the backend:
+
+| Variable | Default / purpose |
+| --- | --- |
+| `AI_INSIGHTS_ENABLED` | `false`; enable explicitly with `true` |
+| `GEMINI_API_KEY` | Required when enabled; obtain from Google AI Studio |
+| `AI_INSIGHTS_API_KEY` | Optional explicit override for `GEMINI_API_KEY` |
+| `AI_INSIGHTS_MODEL` | `gemini-3.5-flash-lite`; use a compatible available text model |
+| `AI_INSIGHTS_TIMEOUT` | `8s`; allowed range 100ms–30s |
+| `AI_INSIGHTS_MAX_OUTPUT_LENGTH` | `1000` characters; allowed range 100–2000 |
+| `AI_INSIGHTS_MAX_OUTPUT_TOKENS` | `384`; allowed range 128–1024 |
+| `AI_INSIGHTS_CACHE_TTL` | `10m`; bounded to 1s–1h |
+| `AI_INSIGHTS_MIN_REQUEST_INTERVAL` | `30s`; bounded to 1–300s |
+| `AI_INSIGHTS_MAX_CACHE_USERS` | `256`; bounded to 1–10000 |
+| `AI_INSIGHTS_ENDPOINT` | `https://generativelanguage.googleapis.com/v1beta/models`; server-controlled base URL, normally unchanged |
+
+Never put credentials in `NEXT_PUBLIC_*`, source files, committed `.env` files or
+frontend code. No real key is included in this repository. The endpoint requires
+HTTPS except loopback HTTP for local provider tests; redirects are not followed.
+Review Google's data handling and billing terms before enabling it for real users.
+
+Responses include `summary`, `generatedAt`, `sourceInsightCount`, `aiGenerated`,
+`status` and `retryAfterSeconds`. Statuses:
+
+- `DISABLED`: no provider call; Analytics hides the summary.
+- `EMPTY`: insufficient-data message, without a provider call.
+- `DETERMINISTIC`: a single source insight displayed directly, without AI labeling or a provider call.
+- `AVAILABLE`: validated AI summary.
+- `UNAVAILABLE`: missing/invalid configuration, timeout, provider/network error,
+  refusal or invalid output; source insights remain usable.
+- `COOLDOWN`: data changed while requests are throttled; stale text is withheld.
+
+There is one provider request for the whole curated set, never one per card, and
+no automatic retries. Identical current insight content/date reuses a bounded,
+per-user in-memory cache. Each GET re-reads canonical insights; changed content
+invalidates the old summary, subject to the short cooldown. Generated timestamps
+do not invalidate the cache. Concurrent requests for one user share a call.
+Failures are cached for the cooldown. Analytics fetches once per mount/explicit
+refresh, never on ordinary rerenders or tab focus, and has a retry countdown.
+Refresh rechecks data but does not bypass server caching or throttling. Browser
+responses use `Cache-Control: no-store`. No financial text, prompts, credentials
+or provider error bodies are logged by this integration.
+
+Cache/throttle state is process-local and disappears on restart; separate Vercel
+instances have separate limits. This is a Phase 3 cost guard, not a distributed
+billing quota. Set provider account quotas appropriate to your deployment.
+No database connection is held while waiting for provider HTTP.
+
+Backend verification uses mocked providers plus real loopback HTTP and real
+PostgreSQL/JWT integration tests, never paid requests. After setting your own key,
+manually log in, open Analytics, compare the summary with its source cards, test
+Refresh after changing financial data, and check provider failure/disabled behavior.
+Only enabling your own configuration verifies your real Gemini account/model access.
