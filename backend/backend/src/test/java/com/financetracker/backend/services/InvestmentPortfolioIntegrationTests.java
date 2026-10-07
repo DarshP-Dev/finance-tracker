@@ -99,6 +99,23 @@ class InvestmentPortfolioIntegrationTests {
         request(owner, "/api/investments/portfolio", "GET", null);
         verify(provider, times(1)).getQuotes(Set.of("AAPL", "MSFT"));
     }
+    @Test void closedMarketPortfolioRefreshAndOtherPagesReuseSnapshotWithoutProviderCallsOrWrites() throws Exception {
+        var before = snapshot();
+        var first = mapper.readTree(request(owner, "/api/investments/portfolio", "GET", null).body());
+        clock.now = Instant.parse("2026-10-15T22:00:00Z");
+        var closed = mapper.readTree(request(owner, "/api/investments/portfolio", "GET", null).body());
+        assertThat(closed.path("summary").path("totalMarketValue")).isEqualTo(first.path("summary").path("totalMarketValue"));
+        assertThat(closed.path("summary").path("lastUpdated")).isEqualTo(first.path("summary").path("lastUpdated"));
+        assertThat(closed.path("summary").path("status").asText()).isEqualTo("STALE");
+        assertThat(request(owner, "/api/investments/portfolio/refresh", "POST", null).statusCode()).isEqualTo(200);
+        assertThat(request(owner, "/api/dashboard", "GET", null).statusCode()).isEqualTo(200);
+        assertThat(request(owner, "/api/analytics", "GET", null).statusCode()).isEqualTo(200);
+        var coldOther = mapper.readTree(request(other, "/api/investments/portfolio", "GET", null).body());
+        assertThat(coldOther.path("summary").path("totalMarketValue").isNull()).isTrue();
+        assertThat(coldOther.toString()).doesNotContain("AAPL", "MSFT");
+        verify(provider, times(1)).getQuotes(Set.of("AAPL", "MSFT"));
+        assertThat(snapshot()).isEqualTo(before);
+    }
     @Test void jwtAuthenticationAndUserIsolationAreEnforced() throws Exception {
         assertThat(request(null, "/api/investments/portfolio", "GET", null).statusCode()).isEqualTo(403);
         var otherResponse = request(other, "/api/investments/portfolio", "GET", null);

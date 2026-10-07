@@ -284,8 +284,57 @@ class MarketQuoteServiceTests {
         assertThat(usage.lastBatchSize()).isEqualTo(2);
         assertThat(usage.toString()).doesNotContain("AAPL", "MSFT", "apiKey");
     }
+    @Test void closedMarketNeverFetchesColdPricesIncludingManualRefreshAndNewTickers() {
+        clock.now = Instant.parse("2026-10-07T21:00:00Z");
+        for (var policy : MarketQuoteService.QuotePolicy.values())
+            assertThat(service.getQuotes(Set.of("AAPL"), policy).get("AAPL").quote()).isNull();
+        assertThat(service.refreshQuotes(Set.of("MSFT")).quotes().get("MSFT").quote()).isNull();
+        assertThat(service.usage().providerRequests()).isZero();
+        assertThat(service.usage().symbolsRequested()).isZero();
+        verify(provider, never()).getQuotes(anySet());
+    }
+    @Test void weekendKeepsLastSessionSnapshotWithoutChangingTimestampsOrConsumingCredits() {
+        clock.now = Instant.parse("2026-10-09T19:00:00Z");
+        var first = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        clock.now = Instant.parse("2026-10-11T20:00:00Z");
+        var weekend = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        assertThat(weekend.quote()).isEqualTo(first.quote());
+        assertThat(weekend.fetchedAt()).isEqualTo(first.fetchedAt());
+        assertThat(weekend.status()).isEqualTo(STALE);
+        service.refreshQuotes(Set.of("AAPL"));
+        verify(provider, times(1)).getQuotes(anySet());
+        assertThat(service.usage().symbolsRequested()).isEqualTo(1);
+        clock.now = Instant.parse("2026-10-12T13:30:00Z");
+        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(AVAILABLE);
+        verify(provider, times(2)).getQuotes(anySet());
+    }
+    @Test void afterCloseRepeatedReadsReuseOnePriceAndNextOpenRefreshes() {
+        clock.now = Instant.parse("2026-10-07T19:59:00Z");
+        var first = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        clock.now = Instant.parse("2026-10-07T23:00:00Z");
+        for (int i = 0; i < 5; i++)
+            assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").quote()).isEqualTo(first.quote());
+        verify(provider, times(1)).getQuotes(anySet());
+        clock.now = Instant.parse("2026-10-08T13:30:00Z");
+        service.getQuotes(Set.of("AAPL"));
+        verify(provider, times(2)).getQuotes(anySet());
+    }
+    @Test void scheduledHolidayDoesNotFetchAndOldUnrelatedSessionQuoteIsNotKeptForever() {
+        clock.now = Instant.parse("2026-11-23T16:00:00Z");
+        service.getQuotes(Set.of("AAPL"));
+        clock.now = Instant.parse("2026-11-26T16:00:00Z");
+        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").quote()).isNull();
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void holidayWeekendKeepsTheMostRecentTradingSessionSnapshot() {
+        clock.now = Instant.parse("2026-07-02T19:00:00Z");
+        var first = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        clock.now = Instant.parse("2026-07-05T16:00:00Z");
+        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").fetchedAt()).isEqualTo(first.fetchedAt());
+        verify(provider, times(1)).getQuotes(anySet());
+    }
     private static class MutableClock extends Clock {
-        private Instant now = Instant.parse("2026-10-07T12:00:00Z");
+        private Instant now = Instant.parse("2026-10-07T16:00:00Z");
         void advance(long seconds) { now = now.plusSeconds(seconds); }
         @Override public ZoneId getZone() { return ZoneOffset.UTC; }
         @Override public Clock withZone(ZoneId zone) { return this; }

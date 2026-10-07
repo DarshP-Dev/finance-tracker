@@ -141,6 +141,22 @@ Its [current Basic plan](https://twelvedata.com/pricing) lists 8 credits/minute 
 Basic is listed for internal non-display usage; check the provider's display-data
 entitlements for your intended deployment. Configure matching quotas if your plan
 differs. The app never polls prices or automatically retries a failed provider call.
+Quote HTTP requests are also suppressed outside the **regular US equity session**
+(9:30 a.m.–4:00 p.m. America/New_York, with daylight saving time). A local calendar
+applies scheduled weekends, NYSE holidays, and 1:00 p.m. early closes; it makes no
+market-state API calls. The calendar follows [NYSE hours and holidays](https://www.nyse.com/trade/hours-calendars)
+and does not predict extraordinary exchange closures. This policy targets US
+equities/ETFs; foreign-market and extended-hours sessions are not supported.
+Manual refresh, Dashboard, Analytics, and new tickers obey the same restriction.
+During a closure, the latest trading session's cached snapshot remains visible
+even across a holiday weekend, with its original timestamp and stale label once
+the freshness TTL expires. It is the last retrieved price, not a guaranteed closing
+price. Older snapshots still obey the stale-age limit. Normal cache/quota rules
+resume on an on-demand request during the next open session; there is no timer
+that contacts the provider at opening. The Investments page loads once on entry
+and retains that response until navigation, an explicit refresh, or a purchase edit.
+The bounded cache is in memory: a backend restart or a never-quoted ticker while
+closed shows prices unavailable until an open session, without spending credits.
 Uncached symbols exceeding the guard remain rate limited until a later refresh.
 Limits/cache are process-local; multiple hosting instances share the provider's
 account quota but do not share this local guard. Unpriced negative lookups are cached

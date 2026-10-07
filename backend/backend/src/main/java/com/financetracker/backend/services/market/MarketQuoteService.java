@@ -80,6 +80,29 @@ public class MarketQuoteService {
         if (!currentDay.equals(day)) { day = currentDay; dayCredits = 0; dayRequests = 0; }
         Duration ttl = bounded(properties.getCacheDuration(), 600, 60, 3600);
         Duration stale = bounded(properties.getStaleDuration(), 86400, ttl.toSeconds(), 172800);
+        if (!UsEquityMarketSession.isOpen(now)) {
+            Instant lastSessionOpen = UsEquityMarketSession.latestSessionOpen(now);
+            for (String symbol : symbols) {
+                if (!symbol.matches("[A-Z0-9][A-Z0-9.-]{0,19}")) {
+                    results.put(symbol, new QuoteResult(null, INVALID_SYMBOL, null));
+                    continue;
+                }
+                Entry entry = cache.get(symbol);
+                // Keep the most recent session's snapshot through nights/weekends/holidays.
+                // Do not change its timestamps or pretend it is the official closing price.
+                boolean lastSessionQuote = entry != null && entry.quote() != null
+                        && !entry.fetchedAt().isBefore(lastSessionOpen);
+                QuoteResult cached = lastSessionQuote
+                        ? new QuoteResult(entry.quote(), entry.failure() != null || !entry.fetchedAt().plus(ttl).isAfter(now)
+                            ? STALE : AVAILABLE, entry.fetchedAt())
+                        : entry == null ? new QuoteResult(null, UNAVAILABLE, null) : result(entry, now, ttl, stale);
+                results.put(symbol, cached);
+                if (entry == null) cacheMisses++; else cacheHits++;
+                if (cached.status() == STALE) staleCacheHits++;
+            }
+            LOGGER.debug("Market data skipped: regular US equity session closed; using cached quotes");
+            return results;
+        }
         long hitsBefore = cacheHits, missesBefore = cacheMisses;
         Set<String> misses = new LinkedHashSet<>();
         for (String symbol : symbols) {
