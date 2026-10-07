@@ -12,10 +12,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class InsightSummaryValidator {
     public enum RejectionReason { NONE, EMPTY, TOO_LONG, CONTROL_CHARACTERS, MARKUP, UNSUPPORTED_LANGUAGE, UNKNOWN_NUMBER_OR_UNIT, UNKNOWN_SPELLED_NUMBER }
+    public enum UnsupportedRule { NONE, ADVICE_OR_PRODUCT_LANGUAGE, MARKET_VALUE, PORTFOLIO_PERFORMANCE, UNREALIZED_RESULTS, LINK, INSTRUCTION_OVERRIDE }
     private static final Pattern NUMBER = Pattern.compile("(?<![\\p{L}\\p{N}])[-+−]?\\$?\\d+(?:,\\d{3})*(?:\\.\\d+)?%?");
     private static final Pattern UNSUPPORTED = Pattern.compile(
             "(?i)\\b(you should|recommend\\w*|buy|sell|borrow|loan|credit product|tax advice|legal advice|invest in|" +
-            "portfolio performance|(?<!not )(?<!not current )market value|unrealized|https?|ignore (?:previous|prior) instructions)\\b");
+            "portfolio performance|market value|unrealized|https?|ignore (?:previous|prior) instructions)\\b");
+    private static final Pattern PURCHASE_COST_LIMITATION = Pattern.compile(
+            "(?i)\\b(?:not (?:a measure of )?|rather than |(?:does|do) not (?:reflect|represent|indicate|measure) (?:the )?|" +
+            "without (?:implying|representing) )(?:current |live )?market value\\b");
     private static final Pattern SPELLED_NUMBER = Pattern.compile(
             "(?i)\\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|" +
             "sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion)\\b");
@@ -29,7 +33,7 @@ public class InsightSummaryValidator {
         if (summary.length() > maxLength) return RejectionReason.TOO_LONG;
         if (summary.codePoints().anyMatch(c -> Character.isISOControl(c) && c != '\n' && c != '\r')) return RejectionReason.CONTROL_CHARACTERS;
         if (summary.contains("<") || summary.contains(">")) return RejectionReason.MARKUP;
-        if (UNSUPPORTED.matcher(summary).find()) return RejectionReason.UNSUPPORTED_LANGUAGE;
+        if (unsupportedRule(summary, source) != UnsupportedRule.NONE) return RejectionReason.UNSUPPORTED_LANGUAGE;
         Set<String> allowed = new HashSet<>();
         String sourceText = source.stream().map(InsightSummaryClient.SourceInsight::message)
                 .reduce("", (a, b) -> a + " " + b);
@@ -38,6 +42,25 @@ public class InsightSummaryValidator {
         String lowerSource = sourceText.toLowerCase(Locale.ROOT);
         if (SPELLED_NUMBER.matcher(summary).results().anyMatch(m -> !Pattern.compile("\\b" + m.group().toLowerCase(Locale.ROOT) + "\\b").matcher(lowerSource).find())) return RejectionReason.UNKNOWN_SPELLED_NUMBER;
         return RejectionReason.NONE;
+    }
+
+    /** Recognized negative valuation caveats are permitted only for recorded purchase-cost insights. */
+    public UnsupportedRule unsupportedRule(String summary, List<InsightSummaryClient.SourceInsight> source) {
+        if (summary == null) return UnsupportedRule.NONE;
+        boolean hasRecordedPurchases = source.stream().anyMatch(insight ->
+                insight.type() == com.financetracker.backend.dto.FinancialInsightResponse.Type.INVESTMENT
+                        && insight.message().toLowerCase(Locale.ROOT).contains("purchase cost"));
+        String checkedText = hasRecordedPurchases ? PURCHASE_COST_LIMITATION.matcher(summary).replaceAll(" ") : summary;
+        var match = UNSUPPORTED.matcher(checkedText);
+        if (!match.find()) return UnsupportedRule.NONE;
+        return switch (match.group().toLowerCase(Locale.ROOT)) {
+            case "market value" -> UnsupportedRule.MARKET_VALUE;
+            case "portfolio performance" -> UnsupportedRule.PORTFOLIO_PERFORMANCE;
+            case "unrealized" -> UnsupportedRule.UNREALIZED_RESULTS;
+            case "http", "https" -> UnsupportedRule.LINK;
+            case "ignore previous instructions", "ignore prior instructions" -> UnsupportedRule.INSTRUCTION_OVERRIDE;
+            default -> UnsupportedRule.ADVICE_OR_PRODUCT_LANGUAGE;
+        };
     }
 
     private String numberIdentity(String text) {

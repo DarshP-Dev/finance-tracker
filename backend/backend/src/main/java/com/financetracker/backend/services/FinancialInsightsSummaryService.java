@@ -75,6 +75,9 @@ public class FinancialInsightsSummaryService {
                 var rejection = validator.rejectionReason(text, minimized, properties.getMaxOutputLength());
                 if (rejection != InsightSummaryValidator.RejectionReason.NONE) {
                     LOGGER.warn("Gemini summary output rejected by financial insight validation (reason {})", rejection);
+                    if (rejection == InsightSummaryValidator.RejectionReason.UNSUPPORTED_LANGUAGE) {
+                        LOGGER.warn("Gemini summary unsupported language rule: {}", validator.unsupportedRule(text, minimized));
+                    }
                     throw new IllegalArgumentException("Invalid summary");
                 }
                 result = response(text.strip(), minimized.size(), AVAILABLE, 0);
