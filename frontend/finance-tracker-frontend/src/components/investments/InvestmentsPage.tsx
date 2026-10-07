@@ -9,9 +9,10 @@ import {
   fetchInvestmentHoldings,
   fetchInvestmentPortfolio,
   fetchInvestments,
+  refreshInvestmentPortfolio,
   updateInvestment,
 } from "@/lib/api";
-import type { Investment, InvestmentHolding, InvestmentPayload, Portfolio } from "@/types/investments";
+import type { Investment, InvestmentHolding, InvestmentPayload, Portfolio, PortfolioQuotePolicy } from "@/types/investments";
 import { PortfolioOverview, signedMoney, signedReturn, priceStatus, quoteTime } from "@/components/investments/PortfolioOverview";
 
 export function InvestmentsPage() {
@@ -23,14 +24,17 @@ export function InvestmentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshWait, setRefreshWait] = useState(0);
+  const [refreshNote, setRefreshNote] = useState("");
 
-  const loadInvestments = useCallback(async () => {
+  const loadInvestments = useCallback(async (quotePolicy: PortfolioQuotePolicy = "ON_DEMAND") => {
     setIsLoading(true);
     setPageError("");
     try {
       const [purchaseLots, portfolioResult] = await Promise.allSettled([
         fetchInvestments(),
-        fetchInvestmentPortfolio(),
+        fetchInvestmentPortfolio(undefined, quotePolicy),
       ]);
       if (purchaseLots.status === "rejected") throw purchaseLots.reason;
       setInvestments(purchaseLots.value);
@@ -53,6 +57,32 @@ export function InvestmentsPage() {
     const timeoutId = window.setTimeout(() => void loadInvestments(), 0);
     return () => window.clearTimeout(timeoutId);
   }, [loadInvestments]);
+
+  useEffect(() => {
+    if (refreshWait <= 0) return;
+    // Expiry only enables the button; it never triggers a quote request.
+    const timeoutId = window.setTimeout(() => { setRefreshWait(0); setRefreshNote(""); }, refreshWait * 1000);
+    return () => window.clearTimeout(timeoutId);
+  }, [refreshWait]);
+
+  async function handleRefresh() {
+    if (isRefreshing || refreshWait > 0) return;
+    setIsRefreshing(true);
+    setPageError("");
+    try {
+      const result = await refreshInvestmentPortfolio();
+      setPortfolio(result.portfolio);
+      setHoldings(result.portfolio.holdings);
+      setRefreshWait(result.retryAfterSeconds);
+      setRefreshNote(result.status === "COOLDOWN"
+        ? `Refresh is paused. Try again in ${result.retryAfterSeconds} seconds.`
+        : "Prices checked. Fresh cached quotes are reused; refresh is briefly paused.");
+    } catch (error) {
+      setPageError(getApiErrorMessage(error));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
   const normalizedSearch = searchQuery.trim().toUpperCase();
   const filteredHoldings = useMemo(
@@ -80,13 +110,15 @@ export function InvestmentsPage() {
   }
 
   async function handleSave(payload: InvestmentPayload) {
+    const quotePolicy = !editingInvestment || editingInvestment.ticker !== payload.ticker.trim().toUpperCase()
+      ? "MISSING_ONLY" : "CACHE_ONLY";
     if (editingInvestment) {
       await updateInvestment(editingInvestment.id, payload);
     } else {
       await createInvestment(payload);
     }
     closeForm();
-    await loadInvestments();
+    await loadInvestments(quotePolicy);
   }
 
   async function handleDelete(investment: Investment) {
@@ -100,7 +132,7 @@ export function InvestmentsPage() {
     setPageError("");
     try {
       await deleteInvestment(investment.id);
-      await loadInvestments();
+      await loadInvestments("CACHE_ONLY");
     } catch (error) {
       setPageError(getApiErrorMessage(error));
     }
@@ -122,7 +154,7 @@ export function InvestmentsPage() {
       {isLoading ? (
         <LoadingState />
       ) : pageError && investments.length === 0 ? (
-        <ErrorState message={pageError} onRetry={loadInvestments} />
+        <ErrorState message={pageError} onRetry={() => loadInvestments()} />
       ) : investments.length === 0 ? (
         <EmptyState onAdd={openCreateForm} />
       ) : (
@@ -131,7 +163,7 @@ export function InvestmentsPage() {
           <section aria-label="Investment records" className="grid overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm sm:grid-cols-3">
             <SummaryItem label="Holdings" value={String(holdings.length)} />
             <SummaryItem label="Purchase Records" value={String(investments.length)} />
-            <button type="button" onClick={() => void loadInvestments()} className="p-5 text-sm font-semibold text-[#195b4d] hover:underline">Refresh prices</button>
+            <div className="p-5"><button type="button" onClick={() => void handleRefresh()} disabled={isRefreshing || refreshWait > 0} className="text-sm font-semibold text-[#195b4d] hover:underline disabled:cursor-not-allowed disabled:opacity-50">{isRefreshing ? "Checking prices…" : refreshWait > 0 ? "Refresh paused" : "Refresh prices"}</button>{refreshNote && <p role="status" className="mt-2 text-xs leading-5 text-[#77717d]">{refreshNote}</p>}</div>
           </section>
 
           <section className="rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">

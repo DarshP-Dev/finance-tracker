@@ -45,3 +45,10 @@ export type InvestmentPayload = {
   purchasePrice: number;
   purchaseDate: string;
 };
+
+export type PortfolioQuotePolicy = "ON_DEMAND" | "CACHE_ONLY" | "MISSING_ONLY";
+export type PortfolioRefreshResponse = {
+  portfolio: Portfolio;
+  status: "ACCEPTED" | "COOLDOWN";
+  retryAfterSeconds: number;
+};

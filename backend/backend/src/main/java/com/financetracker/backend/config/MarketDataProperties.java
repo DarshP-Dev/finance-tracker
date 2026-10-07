@@ -21,4 +21,11 @@ public class MarketDataProperties {
     private int creditsPerMinute = 8;
     private int creditsPerDay = 800;
     private int maxCacheSymbols = 512;
+    private int maxRequestsPerMinute = 8;
+    private int maxRequestsPerDay = 750;
+    private int dailyReserve = 50;
+    private Duration refreshCooldown = Duration.ofSeconds(120);
+    private Duration negativeCacheDuration = Duration.ofMinutes(30);
+    private Duration providerBackoff = Duration.ofMinutes(5);
+    private Duration unchangedQuoteCacheDuration = Duration.ofMinutes(30);
 }

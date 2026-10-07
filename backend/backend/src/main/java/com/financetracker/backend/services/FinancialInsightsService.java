@@ -110,7 +110,7 @@ public class FinancialInsightsService {
     private boolean investmentPerformance(Authentication authentication, Context context, List<Candidate> out) {
         // Current quotes cannot establish historical performance for a past reporting window.
         if (context.filtered() && (context.to().isBefore(context.today()) || context.from().isAfter(context.today()))) return false;
-        var response = portfolio.getPortfolio(authentication);
+        var response = portfolio.getCachedPortfolio(authentication);
         if (response == null || response.summary().status() != ValuationStatus.AVAILABLE) return false;
         var summary = response.summary();
         boolean positive = summary.totalGainLoss().signum() >= 0;

@@ -4,6 +4,8 @@ import com.financetracker.backend.dto.InvestmentHoldingResponse;
 import com.financetracker.backend.dto.InvestmentRequest;
 import com.financetracker.backend.dto.InvestmentResponse;
 import com.financetracker.backend.dto.PortfolioResponse;
+import com.financetracker.backend.dto.PortfolioRefreshResponse;
+import com.financetracker.backend.services.market.MarketQuoteService.QuotePolicy;
 import com.financetracker.backend.services.InvestmentPortfolioService;
 import com.financetracker.backend.services.InvestmentService;
 import jakarta.validation.Valid;
@@ -31,9 +33,18 @@ public class InvestmentController {
     private final InvestmentPortfolioService portfolioService;
 
     @GetMapping("/portfolio")
-    public ResponseEntity<PortfolioResponse> getPortfolio(Authentication authentication) {
+    public ResponseEntity<PortfolioResponse> getPortfolio(Authentication authentication,
+            @RequestParam(defaultValue = "ON_DEMAND") QuotePolicy quotePolicy) {
         return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
-                .body(portfolioService.getPortfolio(authentication));
+                .body(quotePolicy == QuotePolicy.ON_DEMAND ? portfolioService.getPortfolio(authentication)
+                        : portfolioService.getPortfolio(authentication, quotePolicy));
+    }
+
+    @PostMapping("/portfolio/refresh")
+    public ResponseEntity<PortfolioRefreshResponse> refreshPortfolio(Authentication authentication) {
+        var response = portfolioService.refreshPortfolio(authentication);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .header("Retry-After", String.valueOf(response.retryAfterSeconds())).body(response);
     }
 
     @GetMapping

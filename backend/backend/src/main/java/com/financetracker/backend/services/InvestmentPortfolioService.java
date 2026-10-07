@@ -1,14 +1,19 @@
 package com.financetracker.backend.services;
 
 import com.financetracker.backend.dto.PortfolioResponse;
+import com.financetracker.backend.dto.PortfolioRefreshResponse;
+import com.financetracker.backend.dto.InvestmentHoldingResponse;
 import com.financetracker.backend.dto.PortfolioResponse.*;
 import com.financetracker.backend.services.market.MarketDataProvider.Status;
 import com.financetracker.backend.services.market.MarketQuoteService;
+import com.financetracker.backend.services.market.MarketQuoteService.QuotePolicy;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -19,10 +24,28 @@ public class InvestmentPortfolioService {
     private final InvestmentService investments;
     private final MarketQuoteService quotes;
     public PortfolioResponse getPortfolio(Authentication authentication) {
+        return getPortfolio(authentication, QuotePolicy.ON_DEMAND);
+    }
+    public PortfolioResponse getCachedPortfolio(Authentication authentication) {
+        return getPortfolio(authentication, QuotePolicy.CACHE_ONLY);
+    }
+    public PortfolioResponse getPortfolio(Authentication authentication, QuotePolicy policy) {
         var stored = investments.getHoldings(authentication);
+        var symbols = symbols(stored);
+        return calculate(stored, policy == QuotePolicy.ON_DEMAND ? quotes.getQuotes(symbols) : quotes.getQuotes(symbols, policy));
+    }
+    public PortfolioRefreshResponse refreshPortfolio(Authentication authentication) {
+        var stored = investments.getHoldings(authentication);
+        var result = quotes.refreshQuotes(symbols(stored));
+        return new PortfolioRefreshResponse(calculate(stored, result.quotes()), result.accepted()
+                ? PortfolioRefreshResponse.Status.ACCEPTED : PortfolioRefreshResponse.Status.COOLDOWN, result.retryAfterSeconds());
+    }
+    private LinkedHashSet<String> symbols(List<InvestmentHoldingResponse> stored) {
         var symbols = new LinkedHashSet<String>();
         stored.forEach(h -> symbols.add(h.getTicker()));
-        var prices = quotes.getQuotes(symbols);
+        return symbols;
+    }
+    private PortfolioResponse calculate(List<InvestmentHoldingResponse> stored, Map<String, MarketQuoteService.QuoteResult> prices) {
         var holdings = new ArrayList<Holding>();
         BigDecimal totalCost = BigDecimal.ZERO, totalMarket = BigDecimal.ZERO;
         int quotedCount = 0;

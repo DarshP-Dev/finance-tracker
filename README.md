@@ -143,7 +143,8 @@ entitlements for your intended deployment. Configure matching quotas if your pla
 differs. The app never polls prices or automatically retries a failed provider call.
 Uncached symbols exceeding the guard remain rate limited until a later refresh.
 Limits/cache are process-local; multiple hosting instances share the provider's
-account quota but do not share this local guard. Failed lookups are cached for 60 seconds.
+account quota but do not share this local guard. Unpriced negative lookups are cached
+for 30 minutes; rate limits and transient failures use the backoff described below.
 
 Prices are described as **latest available**, not guaranteed real-time. They may
 be delayed or the last close depending on the instrument, entitlement, and market
@@ -187,6 +188,99 @@ from current quotes. Stale, partial, missing, or disabled prices retain the reco
 insight instead. Gemini continues receiving only deterministic insight templates,
 never raw holdings; valuation wording is allowed only for the canonical `Tracked portfolio`
 source. Invented numbers, realized-profit claims, and recommendations remain rejected.
+
+### Twelve Data Credit Conservation
+
+The existing provider adapter, quote mapping, aggregation, financial calculations,
+and symbol cache are preserved. This portfolio tracker favors fewer provider calls
+over frequent price updates. All features share the same authoritative cache:
+fresh quotes default to **10 minutes**, usable stale fallback to **24 hours**.
+The existing `MARKET_DATA_CACHE_DURATION` and `MARKET_DATA_STALE_DURATION` settings
+remain compatible; no new polling, scheduled refresh, streams, or automatic retries
+are introduced. A browser reload does not invalidate quotes.
+
+Normal Dashboard, Investments, and Analytics loads fetch only missing/expired
+quotes, subject to budgets and backoff. Duplicate purchase lots share one normalized
+ticker quote, and a partially cached portfolio batches only the missing symbols.
+Synchronized retrieval continues coalescing overlapping requests. For three unique
+uncached symbols, a normal session starts with one batch (three symbol credits);
+immediate navigation between pages, F5, Insights, and Gemini adds **zero** market calls.
+Twelve Data [charges by attempted symbol even in a batch](https://support.twelvedata.com/en/articles/5203360-batch-api-requests),
+so both HTTP requests and symbol credits are counted separately.
+
+Financial Insights now reads **only cached quotes**, including on a cold cache.
+It omits live performance when cached prices are stale/unavailable; deterministic
+purchase-cost facts still work. Gemini invokes those same deterministic insights
+and cannot initiate a market fetch. Opening Dashboard, Investments, or Analytics
+can warm the cache; a subsequent Insights refresh can use the fresh result.
+
+Authenticated `POST /api/investments/portfolio/refresh` is the manual Refresh action.
+It returns `{ portfolio, status, retryAfterSeconds }` with status `ACCEPTED` or
+`COOLDOWN` and a `Retry-After` header (HTTP 200, matching the summary API's status
+convention). A **120-second shared backend cooldown** applies across users/pages
+because the underlying public quotes/provider allowance are shared. A blocked
+refresh uses cache only; an accepted refresh still never bypasses fresh or negative
+cache entries, budgets, or provider backoff. An empty portfolio does not start a
+cooldown. The UI disables Refresh temporarily; its one-shot expiry timer only
+reenables the button and never fetches prices. The normal retrieval path also
+enforces minimum quote-refresh spacing when the configured TTL is shorter than
+the cooldown.
+
+`GET /api/investments/portfolio` still defaults to `quotePolicy=ON_DEMAND`.
+`quotePolicy=CACHE_ONLY` only recalculates from recorded lots and shared cached
+prices; edits to shares/cost/date and deletions use it. Adding/changing a ticker uses
+`quotePolicy=MISSING_ONLY`: existing usable quotes (including stale quotes) remain,
+and only necessary missing quotes are requested. CRUD never clears unrelated quotes.
+These options select retrieval behavior only; they do not change user ownership,
+calculation rules, or stored financial records.
+
+The daily symbol budget reserves **50 of 800 credits**, giving a safe application
+allowance of **750 symbol credits/day**. Existing per-minute credit guards remain.
+Additional request-count limits guard small repeated batches separately. Attempts
+are counted before provider retrieval, including failures. Quota exhaustion returns
+stale data within the configured age limit, otherwise unavailable; no fake zero price
+is introduced. All guards/counters are **process-local**, reset on restart, and do
+not account for other applications using the same key. Multiple backend instances
+must divide their allowances or adopt a shared limiter before deployment.
+
+New optional settings (credentials and existing settings above remain unchanged):
+
+| Variable | Default | Meaning / bounds |
+| --- | --- | --- |
+| `MARKET_DATA_MAX_REQUESTS_PER_MINUTE` | `8` | HTTP batch attempts/minute, 1–10,000 |
+| `MARKET_DATA_MAX_REQUESTS_PER_DAY` | `750` | HTTP batch attempts/UTC day, 1–1,000,000 |
+| `MARKET_DATA_DAILY_RESERVE` | `50` | Symbol credits withheld from `MARKET_DATA_CREDITS_PER_DAY`, 0–daily budget |
+| `MARKET_DATA_REFRESH_COOLDOWN` | `120s` | Shared manual cooldown/minimum quote-refresh spacing, 60s–1h |
+| `MARKET_DATA_NEGATIVE_CACHE_DURATION` | `30m` | Unknown/unsupported/unavailable unpriced results, 1m–24h |
+| `MARKET_DATA_PROVIDER_BACKOFF` | `5m` | Provider-wide pause after 429/rate rejection or an all-unavailable batch, 1m–1h |
+| `MARKET_DATA_UNCHANGED_QUOTE_CACHE_DURATION` | `30m` | Recheck delay after identical non-null market timestamp **and** price, at least fresh TTL and at most 24h |
+
+Negative results expire and may be retried on a later on-demand request; symbols
+are never permanently invalidated. Provider-wide backoff also covers different/new
+symbols, so changing pages/tickers cannot hammer an already-rejecting provider.
+Application quota blocks are distinct from provider rejection and do not create a
+provider-wide pause. No response or error logs contain credentials/provider bodies.
+
+Identical quote timestamps and prices commonly indicate unchanged/last-close data.
+After observing that twice, retrieval delays the next check to 30 minutes by default;
+this is a simple observation-based optimization, not an exchange calendar. Status
+still becomes `STALE` after the ordinary fresh TTL and retains the actual retrieval
+and market timestamps. Changed quotes return to the normal TTL. Stale age never
+exceeds the configured fallback window.
+
+`MarketQuoteService.usage()` provides internal numeric counters for batch attempts,
+requested symbols, cache hits/misses, stale hits, quota/cooldown/backoff blocks,
+last batch size, and current period budgets. It is not a public API. For optional
+debug verification, set
+`LOGGING_LEVEL_COM_FINANCETRACKER_BACKEND_SERVICES_MARKET=DEBUG` in the backend
+environment. Debug logs show only counts, policy, and skip reasons; no account,
+holding values, symbols, API keys, or provider response bodies. Logging stays quiet
+at the default INFO level.
+
+Credit-conservation tests use mocks/loopback data, with no real Twelve Data credits.
+They cover navigation/reload reuse, partial-cache batches, CRUD cache policies,
+concurrency, cooldown bypass attempts, reserves, per-minute/daily guards, long
+negative caching, 429 backoff, timestamp reuse, and cache-only Insights/Gemini.
 
 Automated tests use mocks or loopback providers, never real market-data requests.
 Real PostgreSQL/JWT integration tests verify purchase CRUD, ownership, aggregation,

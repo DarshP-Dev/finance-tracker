@@ -3,20 +3,26 @@ package com.financetracker.backend.services;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 import com.financetracker.backend.config.MarketDataProperties;
+import com.financetracker.backend.config.InsightsAiProperties;
 import com.financetracker.backend.entities.*;
 import com.financetracker.backend.repositories.*;
 import com.financetracker.backend.security.JwtService;
 import com.financetracker.backend.services.market.*;
+import com.financetracker.backend.services.ai.InsightSummaryClient;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.*;
 import java.time.*;
 import java.util.*;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -27,20 +33,30 @@ import tools.jackson.databind.ObjectMapper;
         "recurring.scheduler.enabled=false", "market-data.enabled=true", "market-data.credits-per-minute=500",
         "app.security.jwt.secret=portfolio-integration-test-only-32-bytes"
 })
-@Import(FinancialInsightsIntegrationTests.FixedClock.class)
+@Import(InvestmentPortfolioIntegrationTests.TestClock.class)
 class InvestmentPortfolioIntegrationTests {
     @LocalServerPort private int port;
     @Autowired private UserRepository users;
     @Autowired private InvestmentRepository investments;
+    @Autowired private TransactionRepository transactions;
+    @Autowired private InsightsAiProperties aiProperties;
+    @Autowired private MutableClock clock;
     @Autowired private MarketDataProperties properties;
     @Autowired private MarketQuoteService quoteService;
     @Autowired private JwtService jwt;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ObjectMapper mapper;
     @MockitoBean private MarketDataProvider provider;
+    @MockitoBean private InsightSummaryClient summaryClient;
     private User owner, other;
     @BeforeEach void setup() {
         ((Map<?, ?>) ReflectionTestUtils.getField(quoteService, "cache")).clear();
+        for (String field : List.of("minute", "day", "nextManualRefreshAt", "backoffUntil")) ReflectionTestUtils.setField(quoteService, field, null);
+        for (String field : List.of("minuteCredits", "dayCredits", "minuteRequests", "dayRequests")) ReflectionTestUtils.setField(quoteService, field, 0);
+        clock.now = Instant.parse("2026-10-15T16:00:00Z");
+        aiProperties.setEnabled(false);
+        properties.setCreditsPerDay(800); properties.setDailyReserve(50);
+        properties.setMaxRequestsPerMinute(500);
         properties.setEnabled(true);
         String suffix = UUID.randomUUID().toString().substring(0, 10);
         owner = user("portfolio_owner_" + suffix); other = user("portfolio_other_" + suffix);
@@ -62,8 +78,10 @@ class InvestmentPortfolioIntegrationTests {
         for (User user : new User[]{owner, other}) {
             if (user == null) continue;
             jdbc.update("delete from investments where user_id = ?", user.getId());
+            jdbc.update("delete from transactions where user_id = ?", user.getId());
             users.deleteById(user.getId());
         }
+        aiProperties.setEnabled(false);
     }
     @Test void aggregatesLotsAndValuesPortfolioWithoutMutatingAnyPurchaseField() throws Exception {
         var before = snapshot();
@@ -126,6 +144,130 @@ class InvestmentPortfolioIntegrationTests {
         assertThat(request(owner, "/api/investments/" + id, "PUT",
                 "{\"ticker\":\"MSFT\",\"shares\":2,\"purchasePrice\":200,\"purchaseDate\":\"2026-09-01\"}").statusCode()).isEqualTo(200);
         assertThat(request(owner, "/api/investments/" + id, "DELETE", null).statusCode()).isEqualTo(204);
+    }
+    @Test void dashboardThenInvestmentsAndBrowserReloadReuseOneBatch() throws Exception {
+        for (String path : List.of("/api/dashboard", "/api/investments/portfolio", "/api/analytics", "/api/investments/portfolio")) {
+            assertThat(request(owner, path, "GET", null).statusCode()).isEqualTo(200);
+        }
+        verify(provider, times(1)).getQuotes(Set.of("AAPL", "MSFT"));
+    }
+    @Test void manualRefreshCannotBeBypassedByRepeatedAuthenticatedRequests() throws Exception {
+        var initial = request(owner, "/api/investments/portfolio/refresh", "POST", null);
+        assertThat(initial.statusCode()).isEqualTo(200);
+        assertThat(initial.body()).contains("ACCEPTED", "2473.00");
+        assertThat(initial.headers().firstValue("Retry-After")).contains("120");
+        for (int attempt = 0; attempt < 5; attempt++) {
+            var blocked = request(owner, "/api/investments/portfolio/refresh", "POST", null);
+            assertThat(blocked.statusCode()).isEqualTo(200);
+            assertThat(mapper.readTree(blocked.body()).path("status").asText()).isEqualTo("COOLDOWN");
+        }
+        var otherResponse = request(other, "/api/investments/portfolio/refresh?userId=" + owner.getId(), "POST", null);
+        assertThat(otherResponse.body()).contains("OTHER").doesNotContain("AAPL", "MSFT");
+        assertThat(request(null, "/api/investments/portfolio/refresh", "POST", null).statusCode()).isEqualTo(403);
+        clock.advance(120);
+        assertThat(request(owner, "/api/investments/portfolio/refresh", "POST", null).body()).contains("ACCEPTED");
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void addingNewTickerOnlyRequestsThatSymbolEvenWithStaleExistingQuotes() throws Exception {
+        request(owner, "/api/investments/portfolio", "GET", null);
+        clock.advance(601);
+        assertThat(request(owner, "/api/investments", "POST", lotJson(" nvda ", "2", "100")).statusCode()).isEqualTo(201);
+        var result = request(owner, "/api/investments/portfolio?quotePolicy=MISSING_ONLY", "GET", null);
+        assertThat(result.statusCode()).isEqualTo(200);
+        verify(provider).getQuotes(Set.of("AAPL", "MSFT"));
+        verify(provider).getQuotes(Set.of("NVDA"));
+        verify(provider, times(2)).getQuotes(anySet());
+    }
+    @Test void editingSharesRecalculatesUsingCachedQuotesWithoutRefresh() throws Exception {
+        editLotUsingCache("7", "170");
+    }
+    @Test void editingPurchasePriceRecalculatesUsingCachedQuotesWithoutRefresh() throws Exception {
+        editLotUsingCache("5", "200");
+    }
+    private void editLotUsingCache(String shares, String price) throws Exception {
+        request(owner, "/api/investments/portfolio", "GET", null);
+        clock.advance(601);
+        long id = investments.findByUserIdOrderByPurchaseDateDesc(owner.getId()).stream().filter(i -> i.getTicker().equals("AAPL")).findFirst().orElseThrow().getId();
+        assertThat(request(owner, "/api/investments/" + id, "PUT", lotJson("AAPL", shares, price)).statusCode()).isEqualTo(200);
+        var result = mapper.readTree(request(owner, "/api/investments/portfolio?quotePolicy=CACHE_ONLY", "GET", null).body());
+        assertThat(result.path("summary").path("status").asText()).isEqualTo("STALE");
+        assertThat(result.path("summary").path("totalCostBasis").decimalValue()).isNotEqualByComparingTo("2275");
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void deletingLotReusesRemainingCachedQuotesWithoutRefresh() throws Exception {
+        request(owner, "/api/investments/portfolio", "GET", null);
+        clock.advance(601);
+        long id = investments.findByUserIdOrderByPurchaseDateDesc(owner.getId()).stream().filter(i -> i.getTicker().equals("MSFT")).findFirst().orElseThrow().getId();
+        assertThat(request(owner, "/api/investments/" + id, "DELETE", null).statusCode()).isEqualTo(204);
+        var result = mapper.readTree(request(owner, "/api/investments/portfolio?quotePolicy=CACHE_ONLY", "GET", null).body());
+        assertThat(result.path("summary").path("totalMarketValue").decimalValue()).isEqualByComparingTo("2073");
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void insightsNeverFetchQuotesForColdOrExpiredCache() throws Exception {
+        assertThat(request(owner, "/api/financial-insights", "GET", null).body()).doesNotContain("investment-performance");
+        verify(provider, never()).getQuotes(anySet());
+        request(owner, "/api/investments/portfolio", "GET", null);
+        assertThat(request(owner, "/api/financial-insights", "GET", null).body()).contains("investment-performance");
+        clock.advance(601);
+        assertThat(request(owner, "/api/financial-insights", "GET", null).body()).doesNotContain("investment-performance");
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void geminiSummarizesCanonicalInsightsWithoutFetchingMarketData() throws Exception {
+        aiProperties.setEnabled(true);
+        transactions.save(Transaction.builder().user(owner).amount(new BigDecimal("1000"))
+                .type(TransactionType.INCOME).category(TransactionCategory.SALARY).date(LocalDate.of(2026, 10, 15)).build());
+        when(summaryClient.isConfigured()).thenReturn(true);
+        when(summaryClient.summarize(anyList())).thenAnswer(call -> {
+            List<InsightSummaryClient.SourceInsight> source = call.getArgument(0);
+            return String.join(" ", source.stream().map(InsightSummaryClient.SourceInsight::message).toList());
+        });
+        var cold = request(owner, "/api/financial-insights/summary", "GET", null);
+        assertThat(mapper.readTree(cold.body()).path("status").asText()).isEqualTo("AVAILABLE");
+        verify(provider, never()).getQuotes(anySet());
+        request(owner, "/api/investments/portfolio", "GET", null);
+        clock.advance(601);
+        assertThat(mapper.readTree(request(owner, "/api/financial-insights/summary", "GET", null).body()).path("status").asText()).isEqualTo("AVAILABLE");
+        verify(summaryClient, times(2)).summarize(anyList());
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void emptyHoldingsNeverRequestMarketDataOnAnyPage() throws Exception {
+        jdbc.update("delete from investments where user_id = ?", owner.getId());
+        for (String path : List.of("/api/investments/portfolio", "/api/dashboard", "/api/analytics", "/api/financial-insights")) {
+            assertThat(request(owner, path, "GET", null).statusCode()).isEqualTo(200);
+        }
+        verifyNoInteractions(provider);
+    }
+    @Test void quotaExhaustionKeepsApplicationUsableWithClearlyStaleValues() throws Exception {
+        properties.setCreditsPerDay(2); properties.setDailyReserve(0);
+        request(owner, "/api/investments/portfolio", "GET", null);
+        clock.advance(601);
+        var result = mapper.readTree(request(owner, "/api/dashboard", "GET", null).body());
+        assertThat(result.path("portfolio").path("summary").path("status").asText()).isEqualTo("STALE");
+        assertThat(result.path("portfolio").path("summary").path("totalMarketValue").decimalValue()).isEqualByComparingTo("2473");
+        assertThat(request(owner, "/api/analytics", "GET", null).statusCode()).isEqualTo(200);
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void concurrentPortfolioHttpRequestsReuseOneBatch() throws Exception {
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = executor.submit(() -> request(owner, "/api/investments/portfolio", "GET", null));
+            var second = executor.submit(() -> request(owner, "/api/investments/portfolio", "GET", null));
+            assertThat(first.get().statusCode()).isEqualTo(200);
+            assertThat(second.get().statusCode()).isEqualTo(200);
+        }
+        verify(provider, times(1)).getQuotes(Set.of("AAPL", "MSFT"));
+    }
+    private String lotJson(String ticker, String shares, String price) {
+        return "{\"ticker\":\"" + ticker + "\",\"shares\":" + shares + ",\"purchasePrice\":" + price + ",\"purchaseDate\":\"2026-09-01\"}";
+    }
+    @TestConfiguration static class TestClock {
+        @Bean @Primary MutableClock portfolioTestClock() { return new MutableClock(); }
+    }
+    static class MutableClock extends Clock {
+        private volatile Instant now = Instant.parse("2026-10-15T16:00:00Z");
+        void advance(long seconds) { now = now.plusSeconds(seconds); }
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return this; }
+        @Override public Instant instant() { return now; }
     }
     private User user(String name) { return users.save(User.builder().username(name).email(name + "@example.com").password("unused").build()); }
     private void lot(User user, String ticker, String shares, String price) {

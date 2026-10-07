@@ -287,7 +287,7 @@ class FinancialInsightsServiceTests {
         when(transactions.sumAmountByUserIdAndTypeBetweenDates(7L, TransactionType.EXPENSE, from, to)).thenReturn(new BigDecimal(expense));
     }
     @Test void livePortfolioInsightOnlyUsesCompleteFreshBackendValuation() {
-        when(portfolio.getPortfolio(auth)).thenReturn(valuedPortfolio(com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.AVAILABLE));
+        when(portfolio.getCachedPortfolio(auth)).thenReturn(valuedPortfolio(com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.AVAILABLE));
         var result = insight("investment-performance");
         assertThat(result.message()).contains("$2073.00", "$1825.00", "$248.00", "13.6%", "unrealized gain");
         assertThat(result.severity()).isEqualTo(FinancialInsightResponse.Severity.POSITIVE);
@@ -297,7 +297,7 @@ class FinancialInsightsServiceTests {
         for (var status : List.of(com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.STALE,
                 com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.UNAVAILABLE,
                 com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.PARTIAL)) {
-            when(portfolio.getPortfolio(auth)).thenReturn(valuedPortfolio(status));
+            when(portfolio.getCachedPortfolio(auth)).thenReturn(valuedPortfolio(status));
             assertThat(keys()).doesNotContain("investment-performance");
         }
     }
