@@ -3,6 +3,8 @@ package com.financetracker.backend.controllers;
 import com.financetracker.backend.dto.InvestmentHoldingResponse;
 import com.financetracker.backend.dto.InvestmentRequest;
 import com.financetracker.backend.dto.InvestmentResponse;
+import com.financetracker.backend.dto.PortfolioResponse;
+import com.financetracker.backend.services.InvestmentPortfolioService;
 import com.financetracker.backend.services.InvestmentService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -26,6 +28,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class InvestmentController {
 
     private final InvestmentService investmentService;
+    private final InvestmentPortfolioService portfolioService;
+
+    @GetMapping("/portfolio")
+    public ResponseEntity<PortfolioResponse> getPortfolio(Authentication authentication) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(portfolioService.getPortfolio(authentication));
+    }
 
     @GetMapping
     public ResponseEntity<List<InvestmentResponse>> getInvestments(

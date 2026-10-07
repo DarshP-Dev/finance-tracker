@@ -1,4 +1,5 @@
 import type { Transaction, TransactionCategory } from "@/types/transactions";
+import type { Portfolio } from "@/types/investments";
 
 export type DashboardSummary = {
   totalIncome: number;
@@ -29,6 +30,7 @@ export type IncomeVsExpenses = {
 };
 
 export type DashboardData = {
+  portfolio?: Portfolio;
   summary: DashboardSummary;
   categorySpending: CategorySpending[];
   monthlySpending: MonthlySpending[];

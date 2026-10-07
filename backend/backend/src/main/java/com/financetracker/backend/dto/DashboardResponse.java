@@ -15,6 +15,7 @@ import lombok.Setter;
 public class DashboardResponse {
 
     private DashboardSummaryResponse summary;
+    private PortfolioResponse portfolio;
     private List<CategorySpendingResponse> categorySpending;
     private List<MonthlySpendingResponse> monthlySpending;
     private List<CashFlowTrendResponse> cashFlowTrend;

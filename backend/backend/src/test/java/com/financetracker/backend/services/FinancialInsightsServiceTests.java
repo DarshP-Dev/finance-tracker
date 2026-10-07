@@ -21,6 +21,7 @@ class FinancialInsightsServiceTests {
     private final BudgetRepository budgets = mock(BudgetRepository.class);
     private final InvestmentRepository investments = mock(InvestmentRepository.class);
     private final RecurringForecastService recurring = mock(RecurringForecastService.class);
+    private final InvestmentPortfolioService portfolio = mock(InvestmentPortfolioService.class);
     private final LocalDate today = LocalDate.of(2026, 10, 15);
     private final LocalDate start = today.withDayOfMonth(1);
     private final LocalDate oldStart = start.minusMonths(1);
@@ -36,7 +37,7 @@ class FinancialInsightsServiceTests {
                 .thenReturn(new RecurringForecastService.ForecastWithUpcoming(
                         new RecurringForecastResponse(today, today.plusDays(29), BigDecimal.ZERO,
                                 BigDecimal.ZERO, BigDecimal.ZERO, 0, 0), List.of()));
-        service = new FinancialInsightsService(new AnalyticsService(users, transactions, budgets, investments), recurring, clock);
+        service = new FinancialInsightsService(new AnalyticsService(users, transactions, budgets, investments), recurring, clock, portfolio);
     }
 
     @Test void spendingIncrease() {
@@ -284,6 +285,29 @@ class FinancialInsightsServiceTests {
     private void rangeTotals(LocalDate from, LocalDate to, String income, String expense) {
         when(transactions.sumAmountByUserIdAndTypeBetweenDates(7L, TransactionType.INCOME, from, to)).thenReturn(new BigDecimal(income));
         when(transactions.sumAmountByUserIdAndTypeBetweenDates(7L, TransactionType.EXPENSE, from, to)).thenReturn(new BigDecimal(expense));
+    }
+    @Test void livePortfolioInsightOnlyUsesCompleteFreshBackendValuation() {
+        when(portfolio.getPortfolio(auth)).thenReturn(valuedPortfolio(com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.AVAILABLE));
+        var result = insight("investment-performance");
+        assertThat(result.message()).contains("$2073.00", "$1825.00", "$248.00", "13.6%", "unrealized gain");
+        assertThat(result.severity()).isEqualTo(FinancialInsightResponse.Severity.POSITIVE);
+        assertThat(result.from()).isEqualTo(today);
+    }
+    @Test void unavailablePartialAndStaleMarketDataNeverProducesPerformanceInsights() {
+        for (var status : List.of(com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.STALE,
+                com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.UNAVAILABLE,
+                com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.PARTIAL)) {
+            when(portfolio.getPortfolio(auth)).thenReturn(valuedPortfolio(status));
+            assertThat(keys()).doesNotContain("investment-performance");
+        }
+    }
+    @Test void currentValuationIsNotClaimedAsHistoricalPerformance() {
+        service.generateInsightsForUser(auth, AnalyticsService.Period.LAST_MONTH, null, null);
+        verifyNoInteractions(portfolio);
+    }
+    private com.financetracker.backend.dto.PortfolioResponse valuedPortfolio(com.financetracker.backend.dto.PortfolioResponse.ValuationStatus status) {
+        return new com.financetracker.backend.dto.PortfolioResponse(new com.financetracker.backend.dto.PortfolioResponse.Summary(
+                new BigDecimal("1825"), new BigDecimal("2073"), new BigDecimal("248"), new BigDecimal("13.59"), 1, 1, "USD", status, clock.instant()), List.of());
     }
     private List<String> keys() { return result().stream().map(FinancialInsightResponse::key).toList(); }
     private FinancialInsightResponse insight(String key) {

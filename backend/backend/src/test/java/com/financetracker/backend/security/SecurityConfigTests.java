@@ -4,6 +4,9 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 
 import com.financetracker.backend.controllers.AuthController;
 import com.financetracker.backend.controllers.AnalyticsController;
@@ -18,6 +21,7 @@ import com.financetracker.backend.services.RecurringForecastService;
 import com.financetracker.backend.services.RecurringTransactionProcessor;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -61,6 +65,20 @@ class SecurityConfigTests {
 
     @MockitoBean
     private AnalyticsService analyticsService;
+
+    @MockitoBean
+    private com.financetracker.backend.services.InvestmentPortfolioService portfolioService;
+
+    @BeforeEach void portfolioResponses() {
+        when(portfolioService.getPortfolio(any())).thenReturn(new com.financetracker.backend.dto.PortfolioResponse(
+                new com.financetracker.backend.dto.PortfolioResponse.Summary(java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
+                        java.math.BigDecimal.ZERO, null, 0, 0, "USD", com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.EMPTY, null), java.util.List.of()));
+        when(dashboardService.getDashboard(any(), nullable(LocalDate.class), nullable(LocalDate.class))).thenReturn(
+                com.financetracker.backend.dto.DashboardResponse.builder().summary(com.financetracker.backend.dto.DashboardSummaryResponse.builder().build()).build());
+        when(analyticsService.getAnalytics(any(), any(), nullable(LocalDate.class), nullable(LocalDate.class))).thenReturn(
+                new com.financetracker.backend.dto.AnalyticsResponse("THIS_MONTH", LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 7),
+                        null, java.util.List.of(), java.util.List.of(), null, null, null, null));
+    }
 
     @MockitoBean
     private RecurringTransactionService recurringTransactionService;

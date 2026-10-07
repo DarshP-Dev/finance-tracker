@@ -15,8 +15,13 @@ public record AnalyticsResponse(
         List<CashFlowMonth> incomeVsExpenses,
         Trend spendingTrend,
         BudgetAnalytics budgets,
-        InvestmentAnalytics investments
+        InvestmentAnalytics investments,
+        PortfolioResponse portfolio
 ) {
+    public AnalyticsResponse withPortfolio(PortfolioResponse portfolio) {
+        return new AnalyticsResponse(period, startDate, endDate, overview, spendingByCategory,
+                incomeVsExpenses, spendingTrend, budgets, investments, portfolio);
+    }
     public record Overview(BigDecimal totalIncome, BigDecimal totalExpenses,
                            BigDecimal netCashFlow, BigDecimal totalInvested) {}
 

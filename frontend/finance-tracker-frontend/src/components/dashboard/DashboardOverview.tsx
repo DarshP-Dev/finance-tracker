@@ -8,6 +8,7 @@ import { SpendingPieChart } from "@/components/dashboard/SpendingPieChart";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { UpcomingTransactionsCard } from "@/components/dashboard/UpcomingTransactionsCard";
 import { FinancialInsightsSection } from "@/components/insights/FinancialInsightsSection";
+import { PortfolioOverview } from "@/components/investments/PortfolioOverview";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/components/transactions/formatters";
 import { fetchDashboard, fetchTransactions, type AuthResponse } from "@/lib/api";
@@ -156,6 +157,7 @@ function DashboardReport({ auth }: DashboardOverviewProps) {
       </div>
 
       <RecentTransactionsCard transactions={transactions} />
+      <PortfolioOverview portfolio={dashboard.portfolio} />
       <UpcomingTransactionsCard />
       <FinancialInsightsSection preview query={{ period: "CUSTOM", ...reportRange }} />
     </div>

@@ -38,8 +38,11 @@ public class GeminiInsightSummaryClient implements InsightSummaryClient {
             do not describe an annual or custom range as this month. Preserve month-to-date
             versus full previous-month distinctions when present. Describe recurring
             forecasts as known scheduled recurring activity, excluding other future spending;
-            never imply a complete spending forecast or guaranteed outcome. Recorded investment
-            purchase cost is not market value, performance, gains, or losses. Do not infer prices.
+            never imply a complete spending forecast or guaranteed outcome. Investment market value,
+            unrealized gains/losses, and returns may be stated ONLY when explicitly supplied by an
+            INVESTMENT insight titled Tracked portfolio. These are latest-price snapshots, not
+            historical returns for the selected date range. Otherwise recorded investment purchase
+            cost is not market value or performance. Do not infer prices or realized gains/losses.
             No recommendations to buy/sell securities, invest, borrow, or choose financial products.
             No investment, financial-product, legal, or tax advice. Do not claim bank-account access.
             No alarmist, emotional, judgmental, congratulatory, or promotional language.

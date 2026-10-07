@@ -48,6 +48,7 @@ public class AnalyticsService {
         return getAnalytics(authentication, period, null, null, today);
     }
 
+    @Transactional(readOnly = true)
     AnalyticsResponse getAnalytics(Authentication authentication, Period period,
             LocalDate startDate, LocalDate endDate, LocalDate today) {
         Long userId = authenticatedUserService.getCurrentUser(authentication).getId();
@@ -150,7 +151,7 @@ public class AnalyticsService {
 
         return new AnalyticsResponse(period.name(), start, end,
                 new AnalyticsResponse.Overview(income, expenses, income.subtract(expenses), invested),
-                categories, incomeVsExpenses, trend, budgetAnalytics, investmentAnalytics);
+                categories, incomeVsExpenses, trend, budgetAnalytics, investmentAnalytics, null);
     }
 
     private List<AnalyticsResponse.MonthlyAmount> monthlyAmounts(List<Object[]> rows,

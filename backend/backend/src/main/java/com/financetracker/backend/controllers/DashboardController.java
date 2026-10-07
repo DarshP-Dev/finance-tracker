@@ -2,6 +2,7 @@ package com.financetracker.backend.controllers;
 
 import com.financetracker.backend.dto.DashboardResponse;
 import com.financetracker.backend.services.DashboardService;
+import com.financetracker.backend.services.InvestmentPortfolioService;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class DashboardController {
 
     private final DashboardService dashboardService;
+    private final InvestmentPortfolioService portfolioService;
 
     @GetMapping
     public ResponseEntity<DashboardResponse> getDashboard(
@@ -25,6 +27,11 @@ public class DashboardController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
-        return ResponseEntity.ok(dashboardService.getDashboard(authentication, startDate, endDate));
+        var response = dashboardService.getDashboard(authentication, startDate, endDate);
+        var portfolio = portfolioService.getPortfolio(authentication);
+        response.setPortfolio(portfolio);
+        response.getSummary().setInvestmentValue(portfolio.summary().totalMarketValue() == null
+                ? portfolio.summary().totalCostBasis() : portfolio.summary().totalMarketValue());
+        return ResponseEntity.ok(response);
     }
 }

@@ -16,7 +16,7 @@ public class InsightSummaryValidator {
     private static final Pattern NUMBER = Pattern.compile("(?<![\\p{L}\\p{N}])[-+−]?\\$?\\d+(?:,\\d{3})*(?:\\.\\d+)?%?");
     private static final Pattern UNSUPPORTED = Pattern.compile(
             "(?i)\\b(you should|recommend\\w*|buy|sell|borrow|loan|credit product|tax advice|legal advice|invest in|" +
-            "portfolio performance|market value|unrealized|https?|ignore (?:previous|prior) instructions)\\b");
+            "portfolio performance|market value|unrealized|investment returns?|portfolio returns?|realized (?:gains?|losses?|profit)|https?|ignore (?:previous|prior) instructions)\\b");
     private static final Pattern PURCHASE_COST_LIMITATION = Pattern.compile(
             "(?i)\\b(?:not (?:a measure of )?|rather than |(?:does|do) not (?:reflect|represent|indicate|measure) (?:the )?|" +
             "without (?:implying|representing) )(?:current |live )?market value\\b");
@@ -51,6 +51,11 @@ public class InsightSummaryValidator {
                 insight.type() == com.financetracker.backend.dto.FinancialInsightResponse.Type.INVESTMENT
                         && insight.message().toLowerCase(Locale.ROOT).contains("purchase cost"));
         String checkedText = hasRecordedPurchases ? PURCHASE_COST_LIMITATION.matcher(summary).replaceAll(" ") : summary;
+        boolean hasValuation = source.stream().anyMatch(i ->
+                i.type() == com.financetracker.backend.dto.FinancialInsightResponse.Type.INVESTMENT
+                        && "Tracked portfolio".equals(i.title()) && i.message().contains("market value")
+                        && i.message().contains("unrealized"));
+        if (hasValuation) checkedText = checkedText.replaceAll("(?i)\\b(?:market value|portfolio performance|unrealized|investment returns?|portfolio returns?)\\b", " ");
         var match = UNSUPPORTED.matcher(checkedText);
         if (!match.find()) return UnsupportedRule.NONE;
         return switch (match.group().toLowerCase(Locale.ROOT)) {

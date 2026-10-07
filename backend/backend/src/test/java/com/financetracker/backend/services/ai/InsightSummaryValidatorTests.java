@@ -41,6 +41,15 @@ class InsightSummaryValidatorTests {
         return List.of(new InsightSummaryClient.SourceInsight(Type.INVESTMENT, Severity.INFO, "Recorded investments",
                 "You track 2 investment positions with $100.00 in recorded purchases. This is purchase cost, not current market value."));
     }
+    @Test void liveValuationLanguageRequiresCanonicalPortfolioInsight() {
+        var live = List.of(new InsightSummaryClient.SourceInsight(Type.INVESTMENT, Severity.POSITIVE, "Tracked portfolio",
+                "Your tracked portfolio market value is $2073.00 with an unrealized gain of $248.00 and return of 13.6%."));
+        assertThat(validator.isValid("Your portfolio market value is $2073.00 with an unrealized gain of $248.00.", live, 1000)).isTrue();
+        assertThat(validator.isValid("Your market value is $100.00.", recordedPurchases(), 1000)).isFalse();
+        assertThat(validator.isValid("You should buy stocks. Market value is $2073.00.", live, 1000)).isFalse();
+        assertThat(validator.isValid("Market value is $9999.00.", live, 1000)).isFalse();
+        assertThat(validator.isValid("Your realized gain is $248.00.", live, 1000)).isFalse();
+    }
     @Test void acceptsSupportedPurchaseCostDisclaimersWithoutExactTemplateWording() {
         for (String text : List.of("Recorded purchases rather than current market value are tracked.",
                 "This amount does not reflect current market value.", "These purchases do not represent market value.",

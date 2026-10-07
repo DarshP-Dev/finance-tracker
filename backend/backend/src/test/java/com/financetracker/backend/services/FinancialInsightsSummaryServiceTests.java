@@ -212,6 +212,24 @@ class FinancialInsightsSummaryServiceTests {
         verify(client, times(1)).summarize(anyList());
     }
 
+    @Test void liveInvestmentSummaryUsesOnlyCanonicalInsightMessages() {
+        String valuation = "At the latest available USD quotes, your tracked portfolio market value is $2073.00 versus $1825.00 in recorded cost basis, with an unrealized gain of $248.00.";
+        when(insights.generateInsightsForUser(auth)).thenReturn(new FinancialInsightsResponse(clock.instant(), List.of(
+                new FinancialInsightResponse("investment-performance", FinancialInsightResponse.Type.INVESTMENT,
+                        FinancialInsightResponse.Severity.POSITIVE, "Tracked portfolio", valuation, null, null, null, null, null, clock.instant()),
+                item("savings", "Your savings rate is 27%."))));
+        when(client.summarize(anyList())).thenAnswer(call -> {
+            List<InsightSummaryClient.SourceInsight> supplied = call.getArgument(0);
+            String serialized = mapper.writeValueAsString(supplied);
+            assertThat(serialized).contains("Tracked portfolio", "market value", "unrealized gain");
+            assertThat(serialized).doesNotContain("shares", "purchasePrice", "holdings", "userId", "owner@example.com");
+            return supplied.getFirst().message();
+        });
+        assertThat(service.generateSummary(auth).status()).isEqualTo(AVAILABLE);
+        assertThat(service.generateSummary(auth).summary()).isEqualTo(valuation);
+        verify(client, times(1)).summarize(anyList());
+    }
+
     private void assertUnavailable() {
         var response = service.generateSummary(auth);
         assertThat(response.status()).isEqualTo(UNAVAILABLE);

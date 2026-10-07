@@ -86,13 +86,124 @@ Projection begins at each schedule's `nextOccurrence`, uses the same calendar ru
 as actual generation, includes occurrences on `endDate`, and excludes paused schedules.
 These GET endpoints never generate transactions or update recurring definitions.
 
+## Investments Phase 2: latest-price portfolio tracking
+
+The existing `investments` table stores individual purchase lots: ticker, fractional
+shares (six decimals), purchase price (four decimals), and purchase date. Multiple
+lots per ticker are supported. Phase 2 preserves every lot and reuses
+`InvestmentService.getHoldings()` for total shares, cost basis, purchase count, and
+weighted average purchase price. No database migration or stored price column is required.
+
+Authenticated `GET /api/investments/portfolio` returns `{ summary, holdings }`.
+Existing purchase CRUD and `/api/investments/holdings` remain compatible. The user
+is always resolved from JWT authentication; no frontend user ID selects holdings.
+
+`InvestmentPortfolioService` reads aggregated lots, finishes the database read,
+then uses `MarketQuoteService` and the `MarketDataProvider` abstraction. The
+`TwelveDataMarketDataProvider` implementation batches unique tickers via `/quote`,
+mapping `close`, currency, optional previous close, and provider timestamp into an
+internal `MarketQuote`. Authorization uses a backend-only header; the key never
+appears in browser code, API responses, logs, or provider URLs.
+
+### Configure Twelve Data
+
+Create a key in your [Twelve Data dashboard](https://twelvedata.com/account/api-keys)
+after registering an account. Set these in the same PowerShell terminal used to
+launch the backend, or in your hosting environment's secret settings:
+
+```powershell
+$env:MARKET_DATA_ENABLED = 'true'
+$env:TWELVE_DATA_API_KEY = 'your-private-key'
+.\start-dev.ps1
+```
+
+Run this from `backend/backend`. `MARKET_DATA_API_KEY` is an alternative key variable.
+Spring does not automatically load a root `.env` file. Do not put the key in
+`NEXT_PUBLIC_*` variables or checked-in configuration. `.env`, `.env.*`, `.local/`,
+and private Spring `application-local.*` files are ignored by Git.
+
+Optional configuration:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MARKET_DATA_ENABLED` | `false` | Optional integration; missing keys never prevent startup |
+| `MARKET_DATA_PROVIDER` | `twelve-data` | Selected adapter |
+| `MARKET_DATA_CACHE_DURATION` | `10m` | Quote freshness TTL, bounded to 1–60 minutes |
+| `MARKET_DATA_STALE_DURATION` | `24h` | Maximum cached age after a transient failure, bounded to 48 hours |
+| `MARKET_DATA_TIMEOUT` | `6s` | Full-response deadline, bounded to 0.5–15 seconds |
+| `MARKET_DATA_CREDITS_PER_MINUTE` | `8` | Process-local symbol-credit guard |
+| `MARKET_DATA_CREDITS_PER_DAY` | `800` | Process-local daily guard (UTC) |
+| `MARKET_DATA_MAX_CACHE_SYMBOLS` | `512` | Bounded shared symbol cache |
+
+Twelve Data documents [one credit per symbol, even in batches](https://support.twelvedata.com/en/articles/5203360-batch-api-requests).
+Its [current Basic plan](https://twelvedata.com/pricing) lists 8 credits/minute and
+800/day; exchange access, display licensing, and higher quotas depend on your plan.
+Basic is listed for internal non-display usage; check the provider's display-data
+entitlements for your intended deployment. Configure matching quotas if your plan
+differs. The app never polls prices or automatically retries a failed provider call.
+Uncached symbols exceeding the guard remain rate limited until a later refresh.
+Limits/cache are process-local; multiple hosting instances share the provider's
+account quota but do not share this local guard. Failed lookups are cached for 60 seconds.
+
+Prices are described as **latest available**, not guaranteed real-time. They may
+be delayed or the last close depending on the instrument, entitlement, and market
+session. The current purchase model has no currency field and the app displays USD:
+only USD stock/ETF listings are valued. Non-USD quotes and unsupported instruments
+stay unpriced; there is no FX conversion. When quote responses omit asset type, the
+adapter requires a recognized US equity listing MIC. Symbols are trimmed,
+uppercased, validated, and URL-encoded; an unresolved ticker never gets a fake zero price.
+
+### Calculations, availability, and integration
+
+All arithmetic uses backend BigDecimal values. Cost basis is the sum of shares ×
+purchase price across lots; weighted average cost is total cost ÷ total shares.
+Market value is aggregated shares × latest price. Money is rounded to cents at the
+holding boundary; portfolio totals sum those holdings. Unrealized gain/loss is
+market value − cost basis; return is gain/loss ÷ cost basis × 100, omitted for zero
+cost. Market allocation is holding market value ÷ complete portfolio value × 100,
+omitted for a zero or incomplete valuation. Percentage values have two backend
+decimals and one display decimal. This does not include sales, dividends, fees,
+stock-split adjustments, or realized returns: accuracy depends on recorded open lots.
+
+Quotes are shared by normalized symbol across users/pages, with concurrent misses
+coalesced into one batch. Private positions are never shared or sent to the provider.
+After a transient refresh failure, cached prices up to the stale-age limit may be
+displayed as `STALE`, preserving their original retrieval timestamp. Market timestamps
+are used only when supplied by the provider. Partial quotes remain visible per
+holding, but complete portfolio totals, return, and allocation are null until every
+holding has a quote. Stored shares, averages, and cost basis always remain visible.
+
+Investments displays summary cards, enriched holdings, a market-value allocation
+chart using existing Recharts, and unchanged purchase-history create/edit/delete
+controls. Manual Refresh respects the backend cache. Dashboard and Analytics reuse
+the same backend portfolio response. Dashboard's `summary.investmentValue` is market
+value when complete, otherwise recorded cost, with availability labels in the UI.
+Analytics preserves selected-period purchase contributions and clearly separates
+them from the current all-holdings snapshot and market allocation.
+
+Financial Insights adds a single curated `investment-performance` insight only for
+a complete, fresh portfolio. Historical selected periods never imply past performance
+from current quotes. Stale, partial, missing, or disabled prices retain the recorded-cost
+insight instead. Gemini continues receiving only deterministic insight templates,
+never raw holdings; valuation wording is allowed only for the canonical `Tracked portfolio`
+source. Invented numbers, realized-profit claims, and recommendations remain rejected.
+
+Automated tests use mocks or loopback providers, never real market-data requests.
+Real PostgreSQL/JWT integration tests verify purchase CRUD, ownership, aggregation,
+read-only portfolio requests, cross-page quote reuse, and absence of an open DB
+transaction during provider retrieval. Manual provider-account verification still
+requires your own key and exchange entitlements. Test valid/unknown tickers, positive
+and negative returns, provider outages, mobile cards, Dashboard, Analytics, and the
+Gemini summary after enabling your configuration.
+
 ## Financial Insights Phase 1
 
 Authenticated `GET /api/financial-insights` returns `{ generatedAt, insights }`.
 The server resolves the user from JWT authentication; callers cannot choose a user ID.
-Insights are computed dynamically in a read-only transaction using existing Analytics
-and recurring forecast services. No insights are saved, no schedules are advanced,
-and no external AI, market-data API, or financial recommendations are involved.
+Insights are computed dynamically using existing read-only Analytics
+and recurring forecast services. No insights are saved and no schedules are advanced.
+The Phase 1 rules remain deterministic; later optional Gemini and market-data
+integrations are described below. No financial recommendations are generated.
 
 Each insight has a stable `key`, `type`, `severity` (`INFO`, `POSITIVE`, `WARNING`),
 `title`, `message`, optional numeric `metricValue` / `comparisonValue`, optional
@@ -108,6 +219,7 @@ insights have null date bounds. Numeric units depend on the key:
 | `recurring-summary` | Forecast recurring income minus expenses | Forecast recurring expenses |
 | `upcoming-largest-expense` | Scheduled expense amount | null |
 | `recorded-investments` | All-time recorded purchase cost | null |
+| `investment-performance` | Unrealized portfolio gain/loss from complete fresh quotes | Recorded cost basis |
 
 Rules and limits:
 
@@ -223,9 +335,9 @@ development. Production and preview deployments use the shared Vercel origin.
 
 `GET /api/financial-insights/summary` uses the existing JWT identity and canonical
 `FinancialInsightsService`. It never accepts a user ID or writes financial records.
-`GET /api/financial-insights`, its calculations and ordering remain unchanged.
+`GET /api/financial-insights` remains the canonical deterministic calculation layer.
 The Analytics page adds an independently loaded summary above the source cards;
-the Dashboard remains unchanged. There is no chatbot, advice, price feed or history table.
+the Dashboard uses deterministic cards only. There is no chatbot or AI history table.
 
 Gemini sits behind `InsightSummaryClient`; the implementation uses Java's HTTP
 client and the [Gemini generateContent API](https://ai.google.dev/api/generate-content)
@@ -239,7 +351,7 @@ not already present in messages, and investment tickers are not sent.
 System instructions are separate from the serialized insight data, which is
 explicitly untrusted. The prompt asks for 2–4 sentences, approximately 50–120 words,
 without recalculation, invented numbers, recommendations, bank-access claims,
-market-price claims or predictions beyond known recurring schedules. The server
+market-price claims absent from a canonical portfolio insight, or predictions beyond known recurring schedules. The server
 requires one JSON `summary` string, rejects truncation/refusals/malformed output,
 caps length, checks numerical values including signs and units against source
 messages, and rejects common advice/markup/link patterns. These checks reduce

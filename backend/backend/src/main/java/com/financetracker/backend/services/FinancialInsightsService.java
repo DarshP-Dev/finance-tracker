@@ -8,6 +8,7 @@ import com.financetracker.backend.dto.FinancialInsightResponse;
 import com.financetracker.backend.dto.FinancialInsightResponse.Severity;
 import com.financetracker.backend.dto.FinancialInsightResponse.Type;
 import com.financetracker.backend.dto.FinancialInsightsResponse;
+import com.financetracker.backend.dto.PortfolioResponse.ValuationStatus;
 import com.financetracker.backend.entities.TransactionCategory;
 import com.financetracker.backend.entities.TransactionType;
 import java.math.BigDecimal;
@@ -15,6 +16,7 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -26,7 +28,6 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /** Read-only rules over existing analytics and recurring projections. No stored insights. */
 @Service
@@ -40,14 +41,13 @@ public class FinancialInsightsService {
     private final AnalyticsService analytics;
     private final RecurringForecastService recurring;
     private final Clock clock;
+    private final InvestmentPortfolioService portfolio;
 
-    @Transactional(readOnly = true)
     public FinancialInsightsResponse generateInsightsForUser(Authentication authentication) {
         return generateInsightsForUser(authentication, null, null, null);
     }
 
     /** Explicit periods follow Analytics; no parameters preserve the original current-data overview. */
-    @Transactional(readOnly = true)
     public FinancialInsightsResponse generateInsightsForUser(Authentication authentication,
             AnalyticsService.Period period, LocalDate startDate, LocalDate endDate) {
         LocalDate today = LocalDate.now(clock);
@@ -78,17 +78,18 @@ public class FinancialInsightsService {
         List<Candidate> candidates = new ArrayList<>();
         Set<TransactionCategory> budgetWarnings = budgetInsights(current, context, candidates);
         boolean sameBudgetRange = current.startDate().equals(current.budgets().month().atDay(1))
-                && java.time.YearMonth.from(current.endDate()).equals(current.budgets().month());
+                && YearMonth.from(current.endDate()).equals(current.budgets().month());
         spendingInsights(current, previous, context,
                 context.filtered() && !sameBudgetRange ? Set.of() : budgetWarnings, candidates);
         savingsAndCashFlow(current, previous, context, candidates);
         recurringInsights(authentication, context, candidates);
-        if (period != null && current.overview().totalInvested().signum() > 0) {
+        boolean valued = investmentPerformance(authentication, context, candidates);
+        if (!valued && period != null && current.overview().totalInvested().signum() > 0) {
             add(candidates, context, 90, "recorded-investments", INVESTMENT, INFO, "Recorded investment purchases",
                     "Your recorded investment purchases total " + money(current.overview().totalInvested())
                             + " " + context.currentLabel() + ". This is purchase cost, not current market value.",
                     current.overview().totalInvested(), null, null);
-        } else if (period == null && current.investments().uniqueHoldings() > 0) {
+        } else if (!valued && period == null && current.investments().uniqueHoldings() > 0) {
             add(candidates, context, 90, "recorded-investments", INVESTMENT, INFO, "Recorded investments",
                     "You track " + current.investments().uniqueHoldings() + " investment "
                             + (current.investments().uniqueHoldings() == 1 ? "position" : "positions") + " with "
@@ -106,9 +107,28 @@ public class FinancialInsightsService {
         return new FinancialInsightsResponse(generatedAt, insights);
     }
 
+    private boolean investmentPerformance(Authentication authentication, Context context, List<Candidate> out) {
+        // Current quotes cannot establish historical performance for a past reporting window.
+        if (context.filtered() && (context.to().isBefore(context.today()) || context.from().isAfter(context.today()))) return false;
+        var response = portfolio.getPortfolio(authentication);
+        if (response == null || response.summary().status() != ValuationStatus.AVAILABLE) return false;
+        var summary = response.summary();
+        boolean positive = summary.totalGainLoss().signum() >= 0;
+        String message = "At the latest available USD quotes, your tracked portfolio market value is "
+                + money(summary.totalMarketValue()) + " versus " + money(summary.totalCostBasis())
+                + " in recorded cost basis, with an unrealized " + (positive ? "gain" : "loss")
+                + " of " + money(summary.totalGainLoss().abs()) + ".";
+        if (summary.totalReturnPercentage() != null) message += " The return relative to recorded cost basis is " + number(summary.totalReturnPercentage()) + "%.";
+        add(out, context, 70, "investment-performance", INVESTMENT,
+                summary.totalGainLoss().signum() == 0 ? INFO : positive ? POSITIVE : WARNING,
+                "Tracked portfolio", message, summary.totalGainLoss(), summary.totalCostBasis(), null,
+                context.today(), context.today());
+        return true;
+    }
+
     private Set<TransactionCategory> budgetInsights(AnalyticsResponse data, Context context, List<Candidate> out) {
         Set<TransactionCategory> warnings = new HashSet<>();
-        boolean currentBudgetMonth = data.budgets().month().equals(java.time.YearMonth.from(context.today()));
+        boolean currentBudgetMonth = data.budgets().month().equals(YearMonth.from(context.today()));
         // Budgets are monthly. Do not report a whole-month budget for a range that starts mid-month.
         if (context.filtered() && context.from().isAfter(data.budgets().month().atDay(1))) return warnings;
         LocalDate budgetEnd = data.budgets().month().atEndOfMonth();

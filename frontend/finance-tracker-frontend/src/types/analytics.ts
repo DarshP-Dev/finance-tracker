@@ -3,6 +3,7 @@ export type AnalyticsPeriod = "THIS_MONTH" | "LAST_MONTH" | "LAST_3_MONTHS" | "L
 export type MonthlyAmount = { month: string; amount: number };
 
 export type AnalyticsData = {
+  portfolio?: import("@/types/investments").Portfolio;
   period: AnalyticsPeriod;
   startDate: string;
   endDate: string;

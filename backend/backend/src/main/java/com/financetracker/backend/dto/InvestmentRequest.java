@@ -21,13 +21,16 @@ import lombok.Setter;
 @AllArgsConstructor
 public class InvestmentRequest {
 
+    private String ticker;
+
     @NotBlank(message = "Ticker cannot be empty")
     @Size(max = 20, message = "Ticker must be 20 characters or fewer")
-    @Pattern(
-            regexp = "[A-Za-z0-9][A-Za-z0-9.-]*",
-            message = "Ticker may contain letters, numbers, periods, and hyphens"
-    )
-    private String ticker;
+    @Pattern(regexp = "[A-Z0-9][A-Z0-9.-]*", message = "Ticker may contain letters, numbers, periods, and hyphens")
+    public String getTicker() { return ticker == null ? null : ticker.trim().toUpperCase(java.util.Locale.ROOT); }
+
+    public void setTicker(String ticker) {
+        this.ticker = ticker == null ? null : ticker.trim().toUpperCase(java.util.Locale.ROOT);
+    }
 
     @NotNull(message = "Shares are required")
     @Positive(message = "Shares must be greater than 0")

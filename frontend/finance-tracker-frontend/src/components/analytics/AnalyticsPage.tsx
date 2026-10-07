@@ -10,6 +10,7 @@ import { fetchAnalytics } from "@/lib/api";
 import { formatCurrency } from "@/components/transactions/formatters";
 import { Input } from "@/components/ui/input";
 import { FinancialInsightsSection } from "@/components/insights/FinancialInsightsSection";
+import { PortfolioOverview } from "@/components/investments/PortfolioOverview";
 import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 
 const periods: { value: AnalyticsPeriod; label: string }[] = [
@@ -243,7 +244,8 @@ export function AnalyticsPage() {
         </Panel>
       </>}
 
-      <div className="flex flex-col gap-1"><h2 className="text-xl font-semibold text-[#151515]">Investment Analytics</h2><p className="text-sm text-[#77717d]">Purchase cost basis only · no market valuation</p></div>
+      <div className="flex flex-col gap-1"><h2 className="text-xl font-semibold text-[#151515]">Investment Analytics</h2><p className="text-sm text-[#77717d]">Contributions follow the selected period. Current portfolio valuation is a latest-price snapshot of all tracked holdings.</p></div>
+      <PortfolioOverview portfolio={data.portfolio} allocation />
       <div className="grid gap-4 sm:grid-cols-2"><Metric label="Total Invested · All Time" value={formatCurrency(data.investments.totalInvestedAllTime)} note="Historical purchase cost" /><Metric label="Unique Holdings" value={String(data.investments.uniqueHoldings)} note="Distinct tickers" /></div>
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="Investment Contributions" description={`Monthly purchase cost · ${range}`}>
@@ -251,11 +253,11 @@ export function AnalyticsPage() {
             <CartesianGrid stroke="#eee8e2" vertical={false} /><XAxis dataKey="month" tickFormatter={monthLabel} tick={{ fontSize: 11 }} /><YAxis tickFormatter={(value) => `$${value}`} tick={{ fontSize: 11 }} width={55} /><Tooltip labelFormatter={(label) => monthLabel(String(label))} formatter={(value) => formatCurrency(Number(value))} /><Bar dataKey="amount" name="Invested" fill="#ff5a1f" radius={[5, 5, 0, 0]} />
           </BarChart></ResponsiveContainer></div>}
         </Panel>
-        <Panel title="Investment Allocation by Cost" description="All-time share of amount invested, not current market value">
+        {data.portfolio?.summary.totalMarketValue == null && <Panel title="Investment Allocation by Cost" description="Recorded cost only · complete market-value allocation is unavailable">
           {data.investments.allocation.length === 0 ? <Empty message="No investments recorded yet." /> : <div className="grid gap-3">
             {data.investments.allocation.map((item) => <div key={item.ticker} className="grid gap-1"><div className="flex justify-between gap-3 text-sm"><span className="font-semibold text-[#151515]">{item.ticker}</span><span>{formatCurrency(item.amountInvested)} · {item.percentage}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#f3edf0]"><div className="h-full rounded-full bg-[#ff5a1f]" style={{ width: `${Math.min(100, item.percentage)}%` }} /></div></div>)}
           </div>}
-        </Panel>
+        </Panel>}
       </div>
     </>}
     {!loading && data && <FinancialInsightsSection query={{ period, ...(period === "CUSTOM" ? customRange : {}) }} />}

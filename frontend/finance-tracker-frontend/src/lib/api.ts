@@ -3,7 +3,7 @@ import type { Budget, BudgetPayload } from "@/types/budgets";
 import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 import type { DashboardData } from "@/types/dashboard";
 import type { FinancialInsightsResponse, FinancialInsightsSummaryResponse } from "@/types/financial-insights";
-import type { Investment, InvestmentHolding, InvestmentPayload } from "@/types/investments";
+import type { Investment, InvestmentHolding, InvestmentPayload, Portfolio } from "@/types/investments";
 import type { RecurringForecast, RecurringForecastRange, RecurringTransaction, RecurringTransactionPayload, UpcomingRecurringTransaction } from "@/types/recurring-transactions";
 import type { Transaction, TransactionFilters, TransactionPayload } from "@/types/transactions";
 
@@ -209,6 +209,11 @@ export async function fetchInvestments() {
 
 export async function fetchInvestmentHoldings() {
   const response = await api.get<InvestmentHolding[]>("/api/investments/holdings");
+  return response.data;
+}
+
+export async function fetchInvestmentPortfolio(signal?: AbortSignal) {
+  const response = await api.get<Portfolio>("/api/investments/portfolio", { signal });
   return response.data;
 }
 

@@ -7,14 +7,17 @@ import {
   createInvestment,
   deleteInvestment,
   fetchInvestmentHoldings,
+  fetchInvestmentPortfolio,
   fetchInvestments,
   updateInvestment,
 } from "@/lib/api";
-import type { Investment, InvestmentHolding, InvestmentPayload } from "@/types/investments";
+import type { Investment, InvestmentHolding, InvestmentPayload, Portfolio } from "@/types/investments";
+import { PortfolioOverview, signedMoney, signedReturn, priceStatus, quoteTime } from "@/components/investments/PortfolioOverview";
 
 export function InvestmentsPage() {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [holdings, setHoldings] = useState<InvestmentHolding[]>([]);
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,12 +28,20 @@ export function InvestmentsPage() {
     setIsLoading(true);
     setPageError("");
     try {
-      const [purchaseLots, groupedHoldings] = await Promise.all([
+      const [purchaseLots, portfolioResult] = await Promise.allSettled([
         fetchInvestments(),
-        fetchInvestmentHoldings(),
+        fetchInvestmentPortfolio(),
       ]);
-      setInvestments(purchaseLots);
-      setHoldings(groupedHoldings);
+      if (purchaseLots.status === "rejected") throw purchaseLots.reason;
+      setInvestments(purchaseLots.value);
+      if (portfolioResult.status === "fulfilled") {
+        setPortfolio(portfolioResult.value);
+        setHoldings(portfolioResult.value.holdings);
+      } else {
+        setPortfolio(null);
+        setHoldings(await fetchInvestmentHoldings());
+        setPageError("Portfolio prices could not be loaded. Your stored purchases are available below.");
+      }
     } catch (error) {
       setPageError(getApiErrorMessage(error));
     } finally {
@@ -51,10 +62,6 @@ export function InvestmentsPage() {
   const filteredInvestments = useMemo(
     () => investments.filter((investment) => investment.ticker.includes(normalizedSearch)),
     [investments, normalizedSearch],
-  );
-  const totalInvested = useMemo(
-    () => holdings.reduce((total, holding) => total + holding.totalInvested, 0),
-    [holdings],
   );
 
   function openCreateForm() {
@@ -104,7 +111,7 @@ export function InvestmentsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-normal text-[#151515]">Investments</h1>
-          <p className="mt-2 text-sm text-[#77717d]">Track your investment purchases and total amount invested.</p>
+          <p className="mt-2 text-sm text-[#77717d]">Track purchase records, latest available prices, and unrealized portfolio returns in USD.</p>
         </div>
         <button type="button" onClick={openCreateForm} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#ff5a1f] px-5 text-sm font-semibold text-white transition hover:bg-[#e64d17]">
           <Plus size={17} />
@@ -120,10 +127,11 @@ export function InvestmentsPage() {
         <EmptyState onAdd={openCreateForm} />
       ) : (
         <>
-          <section aria-label="Investment summary" className="grid overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm sm:grid-cols-3">
-            <SummaryItem label="Total Invested" value={formatCurrency(totalInvested)} />
+          <PortfolioOverview portfolio={portfolio} allocation />
+          <section aria-label="Investment records" className="grid overflow-hidden rounded-2xl border border-[#e4e0e7] bg-white shadow-sm sm:grid-cols-3">
             <SummaryItem label="Holdings" value={String(holdings.length)} />
             <SummaryItem label="Purchase Records" value={String(investments.length)} />
+            <button type="button" onClick={() => void loadInvestments()} className="p-5 text-sm font-semibold text-[#195b4d] hover:underline">Refresh prices</button>
           </section>
 
           <section className="rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-sm">
@@ -148,7 +156,7 @@ export function InvestmentsPage() {
             <div className="mb-3 flex items-end justify-between gap-3">
               <div>
                 <h2 id="holdings-heading" className="text-lg font-semibold text-[#151515]">Holdings</h2>
-                <p className="mt-1 text-sm text-[#77717d]">Grouped purchase cost by ticker.</p>
+                <p className="mt-1 text-sm text-[#77717d]">Aggregated by ticker; individual purchases remain in history. Refresh respects the quote cache.</p>
               </div>
             </div>
             {filteredHoldings.length === 0 ? (
@@ -208,16 +216,21 @@ function HoldingCard({ holding }: { holding: InvestmentHolding }) {
         <Metric label="Total Shares" value={formatShares(holding.totalShares)} />
         <Metric label="Total Invested" value={formatCurrency(holding.totalInvested)} />
         <div className="sm:col-span-2"><Metric label="Average Purchase Price" value={`${formatCurrency(holding.averagePurchasePrice)} / share`} /></div>
+        <Metric label="Latest Price" value={holding.currentPrice == null ? "Unavailable" : formatCurrency(holding.currentPrice)} />
+        <Metric label="Market Value" value={holding.marketValue == null ? "Unavailable" : formatCurrency(holding.marketValue)} />
+        <Metric label="Unrealized Gain / Loss" value={signedMoney(holding.gainLoss)} tone={holding.gainLoss} />
+        <Metric label="Return" value={signedReturn(holding.returnPercentage)} tone={holding.returnPercentage} />
       </dl>
+      <p className="mt-4 text-xs leading-5 text-[#77717d]">{priceStatus(holding.quoteStatus)}{holding.lastUpdated && ` · Retrieved ${quoteTime(holding.lastUpdated)}`}{holding.marketTimestamp && ` · Market timestamp ${quoteTime(holding.marketTimestamp)}`}</p>
     </article>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, tone }: { label: string; value: string; tone?: number | null }) {
   return (
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-[#8d8792]">{label}</dt>
-      <dd className="mt-1 text-base font-semibold text-[#151515]">{value}</dd>
+      <dd className={`mt-1 break-words text-base font-semibold ${tone == null || tone === 0 ? "text-[#151515]" : tone > 0 ? "text-[#027a48]" : "text-[#b42318]"}`}>{value}</dd>
     </div>
   );
 }
