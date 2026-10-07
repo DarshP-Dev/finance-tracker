@@ -26,6 +26,11 @@ public interface RecurringTransactionRepository extends JpaRepository<RecurringT
             + "and r.id > :afterId order by r.id")
     List<Long> findDueIds(@Param("today") LocalDate today, @Param("afterId") Long afterId, Pageable pageable);
 
+    @Query("select r.id from RecurringTransaction r where r.active = true and r.nextOccurrence between :from and :to "
+            + "and (r.endDate is null or r.nextOccurrence <= r.endDate) and r.id > :afterId order by r.id")
+    List<Long> findNotificationUpcomingIds(@Param("from") LocalDate from, @Param("to") LocalDate to,
+            @Param("afterId") Long afterId, Pageable pageable);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from RecurringTransaction r where r.id = :id")
     Optional<RecurringTransaction> findByIdForUpdate(@Param("id") Long id);

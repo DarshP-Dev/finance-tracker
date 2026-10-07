@@ -4,6 +4,7 @@ import com.financetracker.backend.dto.TransactionRequest;
 import com.financetracker.backend.dto.TransactionResponse;
 import com.financetracker.backend.entities.Transaction;
 import com.financetracker.backend.entities.TransactionCategory;
+import com.financetracker.backend.entities.TransactionType;
 import com.financetracker.backend.entities.User;
 import com.financetracker.backend.repositories.TransactionRepository;
 import com.financetracker.backend.repositories.UserRepository;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -28,6 +30,7 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher events;
 
     @Transactional
     public TransactionResponse createTransaction(Authentication authentication, TransactionRequest request) {
@@ -49,7 +52,9 @@ public class TransactionService {
                 .merchant(normalizeBlank(request.getMerchant()))
                 .build();
 
-        return toResponse(transactionRepository.save(transaction));
+        Transaction saved = transactionRepository.save(transaction);
+        publishBudgetChanges(saved);
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -82,6 +87,7 @@ public class TransactionService {
     ) {
         User user = getAuthenticatedUser(authentication);
         Transaction transaction = getOwnedTransaction(transactionId, user.getId());
+        var oldImpact = impact(transaction);
 
         transaction.setAmount(request.getAmount());
         transaction.setCategory(TransactionCategoryNormalizer.normalize(request.getCategory()));
@@ -89,6 +95,11 @@ public class TransactionService {
         transaction.setDescription(normalizeBlank(request.getDescription()));
         transaction.setDate(request.getDate());
         transaction.setMerchant(normalizeBlank(request.getMerchant()));
+
+        List<FinancialNotificationEvents.BudgetImpact> impacts = new ArrayList<>();
+        if (oldImpact != null) impacts.add(oldImpact);
+        if (impact(transaction) != null) impacts.add(impact(transaction));
+        if (!impacts.isEmpty()) events.publishEvent(new FinancialNotificationEvents.BudgetsChanged(impacts));
 
         return toResponse(transaction);
     }
@@ -98,6 +109,16 @@ public class TransactionService {
         User user = getAuthenticatedUser(authentication);
         Transaction transaction = getOwnedTransaction(transactionId, user.getId());
         transactionRepository.delete(transaction);
+        publishBudgetChanges(transaction);
+    }
+
+    private FinancialNotificationEvents.BudgetImpact impact(Transaction transaction) {
+        return transaction.getType() != TransactionType.EXPENSE ? null
+                : new FinancialNotificationEvents.BudgetImpact(transaction.getUser().getId(), transaction.getCategory(), transaction.getDate());
+    }
+    private void publishBudgetChanges(Transaction transaction) {
+        var impact = impact(transaction);
+        if (impact != null) events.publishEvent(new FinancialNotificationEvents.BudgetsChanged(List.of(impact)));
     }
 
     private User getAuthenticatedUser(Authentication authentication) {

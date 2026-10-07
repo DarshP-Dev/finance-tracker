@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { BudgetPage } from "@/components/budgets/BudgetPage";
@@ -43,6 +43,7 @@ type TransactionDashboardProps = {
 export function TransactionDashboard({ auth, onAuthChange, onSignOut }: TransactionDashboardProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const activeView = getAppView(pathname);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -126,11 +127,11 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   useEffect(() => {
     if (activeView !== "transactions") return;
     const timeoutId = window.setTimeout(() => {
-      const requestedTab = new URLSearchParams(window.location.search).get("tab");
+      const requestedTab = searchParams.get("tab");
       setTransactionTab(requestedTab === "recurring" || requestedTab === "upcoming" ? requestedTab : "transactions");
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [activeView, pathname]);
+  }, [activeView, pathname, searchParams]);
 
   useEffect(() => {
     function handleUnauthorized() {

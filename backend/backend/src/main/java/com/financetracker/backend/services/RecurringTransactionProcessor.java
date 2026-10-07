@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,11 +21,13 @@ public class RecurringTransactionProcessor {
     private final RecurringTransactionService recurringTransactionService;
     private final Clock clock;
     private final int maxCatchUp;
+    private final ApplicationEventPublisher events;
 
     public RecurringTransactionProcessor(
             RecurringTransactionRepository repository,
             RecurringTransactionService recurringTransactionService,
             Clock clock,
+            ApplicationEventPublisher events,
             @Value("${recurring.scheduler.max-catch-up:100}") int maxCatchUp
     ) {
         if (maxCatchUp < 1) {
@@ -34,6 +37,7 @@ public class RecurringTransactionProcessor {
         this.recurringTransactionService = recurringTransactionService;
         this.clock = clock;
         this.maxCatchUp = maxCatchUp;
+        this.events = events;
     }
 
     public ProcessingResult processDueRecurringTransactions() {
@@ -71,6 +75,7 @@ public class RecurringTransactionProcessor {
                     failedDefinitions++;
                     log.error("Recurring transaction processing failed for ID {} ({})", id,
                             exception.getClass().getSimpleName());
+                    events.publishEvent(new FinancialNotificationEvents.RecurringFailed(id));
                 }
             }
             afterId = ids.getLast();
@@ -83,6 +88,7 @@ public class RecurringTransactionProcessor {
             log.info("Recurring transaction processing complete: {} due, {} generated, {} failed",
                     dueDefinitions, generatedOccurrences, failedDefinitions);
         }
+        events.publishEvent(new FinancialNotificationEvents.CheckUpcoming());
         return new ProcessingResult(dueDefinitions, generatedOccurrences, failedDefinitions);
     }
 

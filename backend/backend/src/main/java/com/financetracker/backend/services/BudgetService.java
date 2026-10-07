@@ -14,6 +14,8 @@ import java.time.YearMonth;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.Optional;
+import org.springframework.context.ApplicationEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -45,6 +47,20 @@ public class BudgetService {
     private final AuthenticatedUserService authenticatedUserService;
     private final BudgetRepository budgetRepository;
     private final TransactionRepository transactionRepository;
+    private final ApplicationEventPublisher events;
+
+    /** Reuses the same spending and remaining calculations for one impacted budget. */
+    @Transactional(readOnly = true)
+    public Optional<BudgetNotificationStatus> getBudgetForNotification(Long userId, TransactionCategory category, YearMonth month) {
+        return budgetRepository.findByUserIdAndCategoryAndMonth(userId, normalizeCategory(category), month.atDay(1))
+                .map(budget -> new BudgetNotificationStatus(budget, toResponse(budget, calculateAmountSpent(budget))));
+    }
+    public record BudgetNotificationStatus(Budget budget, BudgetResponse values) {}
+
+    private void budgetChanged(Budget budget) {
+        events.publishEvent(new FinancialNotificationEvents.BudgetsChanged(List.of(
+                new FinancialNotificationEvents.BudgetImpact(budget.getUser().getId(), budget.getCategory(), budget.getMonth()))));
+    }
 
     @Transactional(readOnly = true)
     public List<BudgetResponse> getBudgets(Authentication authentication, YearMonth month) {
@@ -76,6 +92,7 @@ public class BudgetService {
 
         try {
             Budget saved = budgetRepository.saveAndFlush(budget);
+            budgetChanged(saved);
             return toResponse(saved, calculateAmountSpent(saved));
         } catch (DataIntegrityViolationException exception) {
             throw duplicateBudget();
@@ -100,6 +117,7 @@ public class BudgetService {
 
         try {
             Budget saved = budgetRepository.saveAndFlush(budget);
+            budgetChanged(saved);
             return toResponse(saved, calculateAmountSpent(saved));
         } catch (DataIntegrityViolationException exception) {
             throw duplicateBudget();

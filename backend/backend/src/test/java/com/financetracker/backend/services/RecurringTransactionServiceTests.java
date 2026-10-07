@@ -53,7 +53,8 @@ class RecurringTransactionServiceTests {
 
     @BeforeEach
     void setUp() {
-        service = new RecurringTransactionService(authenticatedUserService, recurringTransactionRepository, transactionService);
+        service = new RecurringTransactionService(authenticatedUserService, recurringTransactionRepository, transactionService,
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
         user = User.builder().id(25L).email("owner@example.com").build();
         when(authenticatedUserService.getCurrentUser(authentication)).thenReturn(user);
     }

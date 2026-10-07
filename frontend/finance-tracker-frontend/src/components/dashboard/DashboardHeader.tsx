@@ -1,10 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import {
   BarChart3,
-  Bell,
   ChevronDown,
   CircleHelp,
   Home,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import type { AuthResponse } from "@/lib/api";
 import type { AppView } from "@/types/navigation";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 type DashboardHeaderProps = {
   auth: AuthResponse;
@@ -36,6 +36,7 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const closeNotifications = useCallback(() => setIsNotificationsOpen(false), []);
 
   function navigateTo(view: AppView) {
     setIsAccountOpen(false);
@@ -152,31 +153,10 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
                   </div>
                 )}
               </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  aria-label="Notifications"
-                  aria-expanded={isNotificationsOpen}
-                  aria-haspopup="dialog"
-                  onClick={() => {
-                    setIsNotificationsOpen((current) => !current);
-                    setIsAccountOpen(false);
-                    setIsSearchOpen(false);
-                  }}
-                  className="h-10 w-10 rounded-xl border border-[#ece8ef] bg-white text-sm font-semibold transition hover:border-[#ff5a1f]"
-                >
-                  <Bell className="mx-auto" size={17} />
-                </button>
-                {isNotificationsOpen && (
-                  <div role="dialog" aria-label="Notifications" className="absolute right-0 top-[calc(100%+10px)] z-50 w-72 rounded-2xl border border-[#e4e0e7] bg-white p-4 shadow-xl">
-                    <p className="font-semibold text-[#151515]">Notifications</p>
-                    <div className="mt-4 rounded-xl bg-[#f8fafc] px-4 py-5 text-center">
-                      <Bell className="mx-auto text-[#a49eaa]" size={20} />
-                      <p className="mt-2 text-sm font-medium text-[#46404b]">No notifications yet.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <NotificationBell userId={auth.userId} open={isNotificationsOpen}
+                onClose={closeNotifications} onToggle={() => {
+                  setIsNotificationsOpen((current) => !current); setIsAccountOpen(false); setIsSearchOpen(false);
+                }} />
               <div className="relative">
                 <button
                   type="button"

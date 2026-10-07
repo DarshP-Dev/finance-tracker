@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { Notification, NotificationPage } from "@/types/notifications";
 import type { Budget, BudgetPayload } from "@/types/budgets";
 import type { AnalyticsData, AnalyticsPeriod } from "@/types/analytics";
 import type { DashboardData } from "@/types/dashboard";
@@ -62,7 +63,13 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (typeof window !== "undefined" && ["post", "put", "patch", "delete"].includes(response.config.method ?? "")
+        && /^\/api\/(transactions|budgets|recurring-transactions)(\/|$)/.test(response.config.url ?? "")) {
+      window.dispatchEvent(new Event("finance-tracker:notifications-changed"));
+    }
+    return response;
+  },
   (error) => {
     if (axios.isAxiosError(error) && !error.response && error.code === "ERR_NETWORK") {
       error.message = "Cannot connect to the server. Make sure the backend is running, then try again.";
@@ -84,6 +91,18 @@ export async function authenticate(mode: AuthMode, payload: AuthPayload) {
   storeAuth(response.data);
   return response.data;
 }
+
+export async function fetchNotifications(page = 0, signal?: AbortSignal) {
+  return (await api.get<NotificationPage>("/api/notifications", { params: { page, size: 20 }, signal })).data;
+}
+export async function fetchNotificationUnreadCount(signal?: AbortSignal) {
+  return (await api.get<{ count: number }>("/api/notifications/unread-count", { signal })).data.count;
+}
+export async function markNotificationRead(id: number) {
+  return (await api.patch<Notification>(`/api/notifications/${id}/read`)).data;
+}
+export async function markAllNotificationsRead() { await api.patch("/api/notifications/read-all"); }
+export async function deleteNotification(id: number) { await api.delete(`/api/notifications/${id}`); }
 
 export async function registerAccount(payload: AuthPayload) {
   const response = await api.post<AuthResponse>("/api/auth/register", payload);

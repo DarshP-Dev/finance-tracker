@@ -28,13 +28,15 @@ class RecurringTransactionProcessorTests {
 
     @Mock private RecurringTransactionRepository repository;
     @Mock private RecurringTransactionService service;
+    @Mock private org.springframework.context.ApplicationEventPublisher events;
 
     private RecurringTransactionProcessor processor;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(Instant.parse("2026-10-30T12:00:00Z"), ZoneId.of("America/Toronto"));
-        processor = new RecurringTransactionProcessor(repository, service, clock, 100);
+        processor = new RecurringTransactionProcessor(repository, service, clock,
+                events, 100);
     }
 
     @Test
@@ -55,6 +57,7 @@ class RecurringTransactionProcessorTests {
         assertThat(processor.processDueRecurringTransactions())
                 .isEqualTo(new RecurringTransactionProcessor.ProcessingResult(0, 0, 0));
         verify(service, never()).processDueRecurringTransaction(any(), any(), anyInt());
+        verify(events).publishEvent(new FinancialNotificationEvents.CheckUpcoming());
     }
 
     @Test
@@ -71,5 +74,6 @@ class RecurringTransactionProcessorTests {
         assertThat(processor.processDueRecurringTransactions())
                 .isEqualTo(new RecurringTransactionProcessor.ProcessingResult(3, 3, 1));
         verify(service).processDueRecurringTransaction(3L, TODAY, 100);
+        verify(events).publishEvent(new FinancialNotificationEvents.RecurringFailed(2L));
     }
 }

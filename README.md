@@ -521,3 +521,88 @@ PostgreSQL/JWT integration tests, never paid requests. After setting your own ke
 manually log in, open Analytics, compare the summary with its source cards, test
 Refresh after changing financial data, and check provider failure/disabled behavior.
 Only enabling your own configuration verifies your real Gemini account/model access.
+
+## Notifications Phase 1
+
+Notifications are persistent **in-app** alerts. The existing header bell displays
+the unread count (capped visually at `99+`) and opens a scrollable history panel.
+The panel supports marking one/all read, deleting an alert, and loading older
+alerts in pages of 20. Clicking an alert marks it read and opens Budgets or the
+appropriate Recurring/Upcoming transaction tab. There is no extra sidebar item.
+Loading, empty, retry/error, keyboard dismissal, and mobile layouts are supported.
+Counts refresh on navigation, panel opening, notification actions, and successful
+transaction/budget/recurring mutations, with no polling or requests per item.
+
+The current Hibernate `ddl-auto=update` schema management creates `notifications`
+and `notification_receipts`; no migration tool is added. Notifications have an
+owning user, type/severity, title/message, read flag, UTC creation timestamp,
+target path, and optional related ID. Indexes support user/read counts and newest
+first history (creation time, then ID descending). Receipts have a unique
+`(user_id, reference_key)` constraint. PostgreSQL `ON CONFLICT DO NOTHING` claims
+each event atomically, in the same transaction as the notification insert. Deleting
+a notification removes its row but retains its tiny receipt, preventing the same
+event from reappearing after deletion, restart, or concurrent checks. Both tables
+cascade on user deletion. No email address is used for delivery.
+
+Authenticated endpoints, always scoped to the JWT user:
+
+| Method | Endpoint | Response |
+| --- | --- | --- |
+| GET | `/api/notifications?page=0&size=20` | `{ notifications, page, hasMore }`; size 1–50 |
+| GET | `/api/notifications/unread-count` | `{ count }` |
+| PATCH | `/api/notifications/{id}/read` | Updated notification |
+| PATCH | `/api/notifications/read-all` | 204; history retained |
+| DELETE | `/api/notifications/{id}` | 204; financial records unchanged |
+
+There is no public creation endpoint or frontend user ID. Other users' IDs return
+404 for read/delete operations. Listing/count responses use `Cache-Control: no-store`.
+
+Budget checks reuse `BudgetService` spending/remaining/percentage calculations.
+After expense create/edit/delete (including recurring generation) commits, only
+impacted current-month budgets are checked. Creating/editing a budget also checks
+its existing spending. Exact monetary comparisons trigger a WARNING at 80% and
+a separate WARNING at 100%, with correct exceeded amount; exact 100% says the
+limit was reached. A direct jump past 100% produces the stronger alert only.
+An earlier warning may remain as history, capped at one warning and one exceeded
+event per budget/month. Refunds/edits and repeated checks do not reset receipts.
+Existing historical spending is not backfilled on every page read.
+
+The existing recurring processor (daily scheduler or existing external cron
+endpoint) checks active `nextOccurrence` dates from today through three days
+ahead, inclusive, respecting end dates. It also checks after recurring create,
+edit, resume, and manual generation. These INFO messages never generate financial
+transactions early. Expense and income wording differ. One upcoming alert is
+allowed per definition/occurrence. Processing failures produce one ERROR alert
+per failed occurrence with a fixed template; exception details are not sent to
+the frontend. Successful retries leave the original alert as history.
+
+Notification checks run in independent transactions **after financial commits**.
+Insertion failures roll back both the receipt and alert, are logged with a safe
+exception class, and do not roll back the financial change or stop other recurring
+definitions. Alerts are best effort: an unsuccessful check may be retried on the
+next relevant mutation/scheduler run; there is no durable event-delivery queue in
+Phase 1. No retention cleanup deletes history automatically.
+
+| Environment variable | Property | Default |
+| --- | --- | --- |
+| `NOTIFICATIONS_BUDGET_WARNING_PERCENT` | `notifications.budget-warning-percent` | `80` (invalid values use 80) |
+| `NOTIFICATIONS_RECURRING_UPCOMING_DAYS` | `notifications.recurring-upcoming-days` | `3` (bounded 0–30) |
+
+Phase 1 adds no email, SMTP, SMS, browser/mobile push, service worker, or AI-written
+notification messages, and makes no Gemini/Twelve Data calls for notifications.
+
+Verification: 31 new PostgreSQL/JWT notification integration tests cover ownership,
+unread/read/delete operations, pagination/order, exact budget thresholds, deleted
+alert deduplication, concurrent inserts, upcoming/end-date/paused cases, failures,
+rollback isolation, and preservation of financial fields. The full backend suite
+passes **372 tests**. Frontend lint and production build pass. Browser checks with
+a disposable account verify the bell, read/delete/navigation, responsive layout,
+notification persistence after restarting the preview backend and logout/login,
+loading/error/retry/empty states, and unread refresh after a new expense.
+
+To manually check your account, create an expense that takes a current-month
+budget past 80%, then 100%; check the bell and deduplication after further edits.
+Create/resume a recurring schedule due within three days and check Upcoming.
+Mark/read/delete alerts, refresh and log out/in, and confirm history is retained.
+If using external cron, keep its existing schedule running for daily upcoming
+checks; enabling the in-process scheduler is unnecessary on that deployment.

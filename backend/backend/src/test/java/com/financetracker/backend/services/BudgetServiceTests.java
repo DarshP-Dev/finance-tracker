@@ -52,7 +52,8 @@ class BudgetServiceTests {
 
     @BeforeEach
     void setUp() {
-        budgetService = new BudgetService(authenticatedUserService, budgetRepository, transactionRepository);
+        budgetService = new BudgetService(authenticatedUserService, budgetRepository, transactionRepository,
+                org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
         user = User.builder().id(25L).email("budget@example.com").username("Budget User").build();
         when(authenticatedUserService.getCurrentUser(authentication)).thenReturn(user);
     }

@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,7 @@ public class RecurringTransactionService {
     private final AuthenticatedUserService authenticatedUserService;
     private final RecurringTransactionRepository recurringTransactionRepository;
     private final TransactionService transactionService;
+    private final ApplicationEventPublisher events;
 
     @Transactional
     public RecurringTransactionResponse createRecurringTransaction(
@@ -47,6 +49,7 @@ public class RecurringTransactionService {
 
         recurringTransactionRepository.save(recurring);
         generateOccurrence(recurring);
+        events.publishEvent(new FinancialNotificationEvents.RecurringChanged(recurring.getId()));
         return toResponse(recurring);
     }
 
@@ -94,6 +97,8 @@ public class RecurringTransactionService {
             recurring.setActive(false);
         }
 
+        events.publishEvent(new FinancialNotificationEvents.RecurringChanged(recurring.getId()));
+
         return toResponse(recurring);
     }
 
@@ -119,6 +124,7 @@ public class RecurringTransactionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Recurring transaction has passed its end date");
         }
         recurring.setActive(true);
+        events.publishEvent(new FinancialNotificationEvents.RecurringChanged(recurring.getId()));
         return toResponse(recurring);
     }
 
@@ -134,7 +140,9 @@ public class RecurringTransactionService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Recurring transaction has passed its end date");
         }
 
-        return generateOccurrence(recurring);
+        TransactionResponse result = generateOccurrence(recurring);
+        events.publishEvent(new FinancialNotificationEvents.RecurringChanged(recurring.getId()));
+        return result;
     }
 
     /** Called through the Spring proxy so each definition has its own transaction and row lock. */
