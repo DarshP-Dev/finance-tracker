@@ -171,13 +171,15 @@ export async function fetchAnalytics(period: AnalyticsPeriod, range?: { startDat
   return response.data;
 }
 
-export async function getFinancialInsights(signal?: AbortSignal) {
-  const response = await api.get<FinancialInsightsResponse>("/api/financial-insights", { signal });
+export type FinancialInsightsQuery = { period: AnalyticsPeriod; startDate?: string; endDate?: string };
+
+export async function getFinancialInsights(signal?: AbortSignal, params?: FinancialInsightsQuery) {
+  const response = await api.get<FinancialInsightsResponse>("/api/financial-insights", { signal, params });
   return response.data;
 }
 
-export async function getFinancialInsightsSummary(signal?: AbortSignal) {
-  const response = await api.get<FinancialInsightsSummaryResponse>("/api/financial-insights/summary", { signal, timeout: 35000 });
+export async function getFinancialInsightsSummary(signal?: AbortSignal, params?: FinancialInsightsQuery) {
+  const response = await api.get<FinancialInsightsSummaryResponse>("/api/financial-insights/summary", { signal, params, timeout: 35000 });
   return response.data;
 }
 

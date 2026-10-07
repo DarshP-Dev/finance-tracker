@@ -3,6 +3,10 @@ package com.financetracker.backend.controllers;
 import com.financetracker.backend.dto.FinancialInsightsSummaryResponse;
 import com.financetracker.backend.services.FinancialInsightsSummaryService;
 import lombok.RequiredArgsConstructor;
+import java.time.LocalDate;
+import com.financetracker.backend.services.AnalyticsService;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -17,7 +21,10 @@ public class FinancialInsightsSummaryController {
     private final FinancialInsightsSummaryService service;
 
     @GetMapping
-    public ResponseEntity<FinancialInsightsSummaryResponse> getSummary(Authentication authentication) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.generateSummary(authentication));
+    public ResponseEntity<FinancialInsightsSummaryResponse> getSummary(Authentication authentication,
+            @RequestParam(required = false) AnalyticsService.Period period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.generateSummary(authentication, period, startDate, endDate));
     }
 }

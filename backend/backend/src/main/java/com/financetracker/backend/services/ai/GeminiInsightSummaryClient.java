@@ -34,7 +34,9 @@ public class GeminiInsightSummaryClient implements InsightSummaryClient {
             Do not round or abbreviate monetary amounts or percentages. When uncertain, omit
             numerical details rather than approximate. Focus on the highest-priority insights;
             you do not need to cover every insight.
-            Preserve month-to-date versus full previous-month distinctions. Describe recurring
+            Preserve the exact selected date ranges and comparison periods in the supplied insights;
+            do not describe an annual or custom range as this month. Preserve month-to-date
+            versus full previous-month distinctions when present. Describe recurring
             forecasts as known scheduled recurring activity, excluding other future spending;
             never imply a complete spending forecast or guaranteed outcome. Recorded investment
             purchase cost is not market value, performance, gains, or losses. Do not infer prices.

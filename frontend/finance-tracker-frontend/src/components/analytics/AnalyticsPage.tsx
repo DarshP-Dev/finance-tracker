@@ -258,7 +258,7 @@ export function AnalyticsPage() {
         </Panel>
       </div>
     </>}
-    <FinancialInsightsSection />
+    {!loading && data && <FinancialInsightsSection query={{ period, ...(period === "CUSTOM" ? customRange : {}) }} />}
     <div className="flex justify-center pt-4"><button type="button" onClick={() => document.getElementById("analytics-top")?.scrollIntoView({ behavior: "smooth", block: "start" })} className="flex h-14 w-14 flex-col items-center justify-center rounded-full border border-[#e4e0e7] bg-white text-[#ff5a1f] shadow-sm transition hover:border-[#ff5a1f] hover:bg-[#fff3ed]" aria-label="Back to top"><ArrowUp size={19} /><span className="text-xs font-semibold">Top</span></button></div>
   </div>;
 }

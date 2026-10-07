@@ -2,20 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { Info, RefreshCw, Sparkles } from "lucide-react";
-import { getFinancialInsightsSummary } from "@/lib/api";
+import { getFinancialInsightsSummary, type FinancialInsightsQuery } from "@/lib/api";
 import type { FinancialInsightsSummaryResponse } from "@/types/financial-insights";
 
-export function FinancialInsightsSummary() {
+export function FinancialInsightsSummary({ query }: { query?: FinancialInsightsQuery }) {
   const [response, setResponse] = useState<FinancialInsightsSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
+  const { period, startDate, endDate } = query ?? {};
   const [wait, setWait] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void getFinancialInsightsSummary(controller.signal).then((data) => {
+      void getFinancialInsightsSummary(controller.signal, period ? { period, startDate, endDate } : undefined).then((data) => {
         if (controller.signal.aborted) return;
         setResponse(data);
         setWait(Math.max(0, data.retryAfterSeconds));
@@ -33,7 +34,7 @@ export function FinancialInsightsSummary() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [retry]);
+  }, [retry, period, startDate, endDate]);
 
   useEffect(() => {
     if (wait <= 0) return;
@@ -77,7 +78,7 @@ export function FinancialInsightsSummary() {
           </div>
         </div>
       ) : unavailable ? (
-        <p className="mt-3 text-sm leading-6 text-[#46404b]">AI summary unavailable. Your calculated financial insights remain available below.</p>
+        <p className="mt-3 text-sm leading-6 text-[#46404b]">{response?.status === "COOLDOWN" ? "Summary refresh is briefly paused. Your selected-period insights are available below." : "AI summary unavailable. Your calculated financial insights remain available below."}</p>
       ) : (
         <>
           <p className="mt-3 whitespace-pre-line break-words text-sm leading-6 text-[#46404b]">{response?.summary}</p>

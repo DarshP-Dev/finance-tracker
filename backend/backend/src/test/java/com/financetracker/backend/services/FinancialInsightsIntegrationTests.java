@@ -143,6 +143,28 @@ class FinancialInsightsIntegrationTests {
         assertThat(snapshot()).isEqualTo(before);
     }
 
+    @Test void selectedYearHttpReportUsesAnnualTotalsAndRemainsReadOnlyAndOwned() throws Exception {
+        var before = snapshot();
+        var response = get(owner, "?period=THIS_YEAR&userId=" + other.getId());
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = mapper.readTree(response.body());
+        var savings = java.util.stream.StreamSupport.stream(body.path("insights").spliterator(), false)
+                .filter(i -> i.path("key").asText().equals("savings-rate")).findFirst().orElseThrow();
+        assertThat(savings.path("metricValue").decimalValue()).isEqualByComparingTo("22");
+        assertThat(savings.path("message").asText()).contains("$440.00", "2026-01-01 through 2026-10-15");
+        assertThat(response.body()).doesNotContain("99999", "Other secret", "next 30 days");
+        assertThat(snapshot()).isEqualTo(before);
+    }
+    @Test void customHttpReportUsesSelectedDatesAndRejectsInvalidRanges() throws Exception {
+        var response = get(owner, "?period=CUSTOM&startDate=2026-09-01&endDate=2026-09-30");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("30%", "$300.00", "2026-09-01 through 2026-09-30")
+                .doesNotContain("Owner rent", "next 30 days", "this month to date");
+        assertThat(get(owner, "?period=CUSTOM").statusCode()).isEqualTo(400);
+        assertThat(get(owner, "?period=CUSTOM&startDate=2026-10-10&endDate=2026-10-01").statusCode()).isEqualTo(400);
+        assertThat(get(owner, "?period=THIS_YEAR&startDate=2026-01-01").statusCode()).isEqualTo(400);
+    }
+
     private HttpResponse<String> get(User user, String query) throws Exception {
         return getPath(user, "/api/financial-insights" + query);
     }

@@ -152,7 +152,35 @@ Rules and limits:
 Backend tests include deterministic rule tests and real PostgreSQL / JWT HTTP
 tests that compare all financial fields before and after GET requests. Integration
 fixtures use unique test users and remove only their own records afterward.
-The frontend is intentionally deferred until Financial Insights Phase 2.
+### Selected reporting periods
+
+Analytics and the Dashboard preview pass their selected reporting period to insights.
+Both `GET /api/financial-insights` and `GET /api/financial-insights/summary` accept
+the same `period`, `startDate`, and `endDate` parameters as Analytics. Dates are
+required only for `CUSTOM`; requests without parameters preserve the original
+current-month overview and next-30-days recurring forecast described above.
+
+- `THIS_MONTH` compares month to date with the full previous calendar month.
+- `LAST_MONTH` compares that complete month with the preceding calendar month.
+- `THIS_YEAR` compares year to date with the same date range in the previous year.
+- Rolling and custom ranges compare with the immediately preceding range of the
+  same inclusive length. Cards explicitly identify both compared ranges.
+- Savings, cash flow, category totals, and recorded investment purchases use the
+  selected range. Investment purchase totals are not market valuations.
+- Budgets remain monthly and identify the calendar month at the end of the range.
+  Partial historical month windows omit whole-month budget insights. Historical
+  budgets do not use today's pace; multi-month spending changes are not suppressed
+  by a warning about only one month's budget.
+- Historical reports omit future recurring forecasts. Ranges including future
+  dates can show known recurring activity within their future portion, capped at
+  30 inclusive dates. Actual transaction totals and scheduled forecasts stay distinct.
+- AI summaries use exactly these selected-period insights. The cache fingerprint
+  includes the period and custom dates, and a period change never displays a cached
+  narrative for another report. Switching during the per-user cooldown can require
+  using Retry after the countdown expires.
+
+The frontend clears old cards and summary state when the selected range changes
+and cancels obsolete requests. Financial calculations remain entirely on the backend.
 
 ## Deploy with Vercel and Neon
 

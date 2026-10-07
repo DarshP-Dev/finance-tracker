@@ -43,17 +43,52 @@ public class FinancialInsightsService {
 
     @Transactional(readOnly = true)
     public FinancialInsightsResponse generateInsightsForUser(Authentication authentication) {
+        return generateInsightsForUser(authentication, null, null, null);
+    }
+
+    /** Explicit periods follow Analytics; no parameters preserve the original current-data overview. */
+    @Transactional(readOnly = true)
+    public FinancialInsightsResponse generateInsightsForUser(Authentication authentication,
+            AnalyticsService.Period period, LocalDate startDate, LocalDate endDate) {
         LocalDate today = LocalDate.now(clock);
         Instant generatedAt = clock.instant();
-        var current = analytics.getAnalytics(authentication, AnalyticsService.Period.THIS_MONTH, today);
-        var previous = analytics.getAnalytics(authentication, AnalyticsService.Period.LAST_MONTH, today);
-        var context = new Context(today, generatedAt, current.startDate(), current.endDate());
+        var current = analytics.getAnalytics(authentication, period == null ? AnalyticsService.Period.THIS_MONTH : period,
+                startDate, endDate, today);
+        LocalDate previousStart;
+        LocalDate previousEnd;
+        if (period == null || period == AnalyticsService.Period.THIS_MONTH || period == AnalyticsService.Period.LAST_MONTH) {
+            previousStart = current.startDate().minusMonths(1).withDayOfMonth(1);
+            previousEnd = current.startDate().minusDays(1);
+        } else if (period == AnalyticsService.Period.THIS_YEAR) {
+            previousStart = current.startDate().minusYears(1);
+            previousEnd = current.endDate().minusYears(1);
+        } else {
+            // Custom and rolling ranges compare with the immediately preceding equally long range.
+            long days = ChronoUnit.DAYS.between(current.startDate(), current.endDate()) + 1;
+            previousEnd = current.startDate().minusDays(1);
+            previousStart = current.startDate().minusDays(days);
+        }
+        var previous = analytics.getAnalytics(authentication, AnalyticsService.Period.CUSTOM,
+                previousStart, previousEnd, today);
+        boolean monthly = period == null || period == AnalyticsService.Period.THIS_MONTH;
+        String currentLabel = monthly ? "this month to date" : "for " + current.startDate() + " through " + current.endDate();
+        String previousLabel = monthly ? "the full previous calendar month" : previousStart + " through " + previousEnd;
+        var context = new Context(today, generatedAt, current.startDate(), current.endDate(),
+                currentLabel, previousLabel, period != null);
         List<Candidate> candidates = new ArrayList<>();
         Set<TransactionCategory> budgetWarnings = budgetInsights(current, context, candidates);
-        spendingInsights(current, previous, context, budgetWarnings, candidates);
+        boolean sameBudgetRange = current.startDate().equals(current.budgets().month().atDay(1))
+                && java.time.YearMonth.from(current.endDate()).equals(current.budgets().month());
+        spendingInsights(current, previous, context,
+                context.filtered() && !sameBudgetRange ? Set.of() : budgetWarnings, candidates);
         savingsAndCashFlow(current, previous, context, candidates);
         recurringInsights(authentication, context, candidates);
-        if (current.investments().uniqueHoldings() > 0) {
+        if (period != null && current.overview().totalInvested().signum() > 0) {
+            add(candidates, context, 90, "recorded-investments", INVESTMENT, INFO, "Recorded investment purchases",
+                    "Your recorded investment purchases total " + money(current.overview().totalInvested())
+                            + " " + context.currentLabel() + ". This is purchase cost, not current market value.",
+                    current.overview().totalInvested(), null, null);
+        } else if (period == null && current.investments().uniqueHoldings() > 0) {
             add(candidates, context, 90, "recorded-investments", INVESTMENT, INFO, "Recorded investments",
                     "You track " + current.investments().uniqueHoldings() + " investment "
                             + (current.investments().uniqueHoldings() == 1 ? "position" : "positions") + " with "
@@ -73,13 +108,19 @@ public class FinancialInsightsService {
 
     private Set<TransactionCategory> budgetInsights(AnalyticsResponse data, Context context, List<Candidate> out) {
         Set<TransactionCategory> warnings = new HashSet<>();
-        BigDecimal elapsed = percent(BigDecimal.valueOf(context.today().getDayOfMonth()),
-                BigDecimal.valueOf(context.today().lengthOfMonth()));
+        boolean currentBudgetMonth = data.budgets().month().equals(java.time.YearMonth.from(context.today()));
+        // Budgets are monthly. Do not report a whole-month budget for a range that starts mid-month.
+        if (context.filtered() && context.from().isAfter(data.budgets().month().atDay(1))) return warnings;
+        LocalDate budgetEnd = data.budgets().month().atEndOfMonth();
+        LocalDate observedEnd = budgetEnd.isBefore(context.today()) ? budgetEnd : context.today();
+        if (context.filtered() && context.to().isBefore(observedEnd)) return warnings;
+        BigDecimal elapsed = currentBudgetMonth ? percent(BigDecimal.valueOf(context.today().getDayOfMonth()),
+                BigDecimal.valueOf(context.today().lengthOfMonth())) : new BigDecimal("100");
         data.budgets().categories().stream()
                 .sorted(Comparator.comparing(AnalyticsResponse.BudgetCategory::percentUsed).reversed()
                         .thenComparing(b -> b.category().name()))
                 .filter(b -> b.percentUsed().compareTo(new BigDecimal("80")) >= 0
-                        || (b.percentUsed().compareTo(new BigDecimal("40")) >= 0
+                        || (currentBudgetMonth && b.percentUsed().compareTo(new BigDecimal("40")) >= 0
                             && b.percentUsed().subtract(elapsed).compareTo(new BigDecimal("20")) >= 0))
                 .limit(3).forEach(b -> {
                     warnings.add(b.category());
@@ -100,6 +141,7 @@ public class FinancialInsightsService {
                         }
                         priority = 20;
                     }
+                    if (context.filtered()) message = "For " + data.budgets().month() + ": " + message;
                     add(out, context, priority, "budget-" + b.category().name().toLowerCase(Locale.ROOT),
                             BUDGET, WARNING, label + " budget", message, b.percentUsed(), b.remaining(), b.category(),
                             data.budgets().month().atDay(1), data.budgets().month().atEndOfMonth());
@@ -116,9 +158,9 @@ public class FinancialInsightsService {
             if (change.abs().compareTo(CHANGE_THRESHOLD) >= 0) {
                 add(out, context, change.signum() > 0 ? 45 : 75, "spending-change", SPENDING,
                         change.signum() > 0 ? WARNING : POSITIVE, "Spending change",
-                        "Your spending this month to date is " + number(change.abs()) + "% "
+                        "Your spending " + context.currentLabel() + " is " + number(change.abs()) + "% "
                                 + (change.signum() > 0 ? "higher" : "lower")
-                                + " than the full previous calendar month.", change, oldExpenses, null);
+                                + " than " + context.previousLabel() + ".", change, oldExpenses, null);
             }
         }
         var oldCategories = new EnumMap<TransactionCategory, BigDecimal>(TransactionCategory.class);
@@ -138,9 +180,9 @@ public class FinancialInsightsService {
                     add(out, context, change.signum() > 0 ? 40 : 75,
                             "category-" + c.category().name().toLowerCase(Locale.ROOT), SPENDING,
                             change.signum() > 0 ? WARNING : POSITIVE, label(c.category()) + " spending",
-                            label(c.category()) + " spending this month to date is " + number(change.abs()) + "% "
+                            label(c.category()) + " spending " + context.currentLabel() + " is " + number(change.abs()) + "% "
                                     + (change.signum() > 0 ? "higher" : "lower")
-                                    + " than the full previous calendar month.", change, c.previous(), c.category());
+                                    + " than " + context.previousLabel() + ".", change, c.previous(), c.category());
                 });
         // When a single category accounts for both period totals, its change already
         // explains the overall change. Keep the more specific insight.
@@ -158,7 +200,7 @@ public class FinancialInsightsService {
         if (now.netCashFlow().signum() < 0) {
             BigDecimal rate = now.totalIncome().signum() > 0 ? percent(now.netCashFlow(), now.totalIncome()) : null;
             add(out, context, 30, "income-expenses", INCOME, WARNING, "Income versus expenses",
-                    "Your expenses exceed income by " + money(now.netCashFlow().abs()) + " this month to date."
+                    "Your expenses exceed income by " + money(now.netCashFlow().abs()) + " " + context.currentLabel() + "."
                             + (rate == null ? "" : " Your savings rate is " + number(rate) + "%."),
                     now.netCashFlow(), rate, null);
         }
@@ -170,11 +212,11 @@ public class FinancialInsightsService {
             if (now.netCashFlow().signum() >= 0 || (changed && rate.compareTo(oldRate) > 0)) {
                 String message = changed
                         ? "Your savings rate " + (rate.compareTo(oldRate) > 0 ? "increased" : "decreased")
-                            + " from " + number(oldRate) + "% for the full previous calendar month to "
-                            + number(rate) + "% this month to date."
-                        : "Your savings rate this month to date is " + number(rate) + "%.";
+                            + " from " + number(oldRate) + "% for " + context.previousLabel() + " to "
+                            + number(rate) + "% " + context.currentLabel() + "."
+                        : "Your savings rate " + context.currentLabel() + " is " + number(rate) + "%.";
                 if (now.netCashFlow().signum() > 0) {
-                    message += " Income exceeds expenses by " + money(now.netCashFlow()) + " this month to date.";
+                    message += " Income exceeds expenses by " + money(now.netCashFlow()) + " " + context.currentLabel() + ".";
                 }
                 Severity severity = changed ? (rate.compareTo(oldRate) > 0 ? POSITIVE : WARNING)
                         : rate.signum() > 0 ? POSITIVE : INFO;
@@ -186,13 +228,15 @@ public class FinancialInsightsService {
 
     private void recurringInsights(Authentication authentication, Context context, List<Candidate> out) {
         // Exactly 30 inclusive calendar dates: today through today + 29.
-        LocalDate end = context.today().plusDays(29);
-        var projection = recurring.getForecastWithUpcoming(authentication, context.today(), end);
+        if (context.filtered() && !context.to().isAfter(context.today())) return;
+        LocalDate from = context.filtered() && context.from().isAfter(context.today()) ? context.from() : context.today();
+        LocalDate end = context.filtered() && context.to().isBefore(from.plusDays(29)) ? context.to() : from.plusDays(29);
+        var projection = recurring.getForecastWithUpcoming(authentication, from, end);
         var forecast = projection.forecast();
         if (forecast.incomeOccurrenceCount() + forecast.expenseOccurrenceCount() == 0) return;
         String message = "Based on known recurring transactions, you have "
                 + money(forecast.expectedIncome()) + " in income and " + money(forecast.expectedExpenses())
-                + " in expenses scheduled over the next 30 days.";
+                + " in expenses scheduled " + (context.filtered() ? "from " + from + " through " + end : "over the next 30 days") + ".";
         boolean hasNet = forecast.netCashFlow().signum() != 0;
         Severity severity = INFO;
         if (hasNet) {
@@ -206,7 +250,7 @@ public class FinancialInsightsService {
         // Totals and net share one insight instead of restating the same forecast twice.
         add(out, context, 60, "recurring-summary", hasNet ? FORECAST : RECURRING, severity,
                 "Known recurring forecast", message, forecast.netCashFlow(), forecast.expectedExpenses(),
-                null, context.today(), end);
+                null, from, end);
         projection.upcoming().stream().filter(o -> o.type() == TransactionType.EXPENSE
                         && !o.scheduledDate().isAfter(context.today().plusDays(6)))
                 .sorted(Comparator.comparing(com.financetracker.backend.dto.UpcomingRecurringTransactionResponse::amount)
@@ -248,7 +292,8 @@ public class FinancialInsightsService {
         String text = category.name().toLowerCase(Locale.ROOT).replace('_', ' ');
         return Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
-    private record Context(LocalDate today, Instant generatedAt, LocalDate from, LocalDate to) {}
+    private record Context(LocalDate today, Instant generatedAt, LocalDate from, LocalDate to,
+                           String currentLabel, String previousLabel, boolean filtered) {}
     private record Candidate(int priority, BigDecimal importance, FinancialInsightResponse insight) {}
     private record CategoryChange(TransactionCategory category, BigDecimal previous, BigDecimal delta) {}
 }

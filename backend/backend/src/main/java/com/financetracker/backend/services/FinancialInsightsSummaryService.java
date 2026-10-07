@@ -43,17 +43,24 @@ public class FinancialInsightsSummaryService {
     private final Object[] userLocks = IntStream.range(0, 64).mapToObj(i -> new Object()).toArray();
 
     public FinancialInsightsSummaryResponse generateSummary(Authentication authentication) {
+        return generateSummary(authentication, null, null, null);
+    }
+
+    public FinancialInsightsSummaryResponse generateSummary(Authentication authentication,
+            AnalyticsService.Period period, LocalDate startDate, LocalDate endDate) {
         Long userId = users.getCurrentUser(authentication).getId();
         if (!properties.isEnabled()) return response(null, 0, DISABLED, 0);
         synchronized (userLocks[Math.floorMod(userId.hashCode(), userLocks.length)]) {
             // Always re-read canonical insights so changed data cannot reuse an old narrative.
-            var source = insights.generateInsightsForUser(authentication);
+            var source = period == null && startDate == null && endDate == null
+                    ? insights.generateInsightsForUser(authentication)
+                    : insights.generateInsightsForUser(authentication, period, startDate, endDate);
             if (source.insights().isEmpty()) return response("There isn't enough financial activity yet to generate a summary.", 0, EMPTY, 0);
             List<SourceInsight> minimized = source.insights().stream().map(this::minimize).toList();
             if (minimized.size() == 1) return response(minimized.getFirst().message(), 1, DETERMINISTIC, 0);
             if (!client.isConfigured()) return response(null, minimized.size(), UNAVAILABLE, 0);
             String fingerprint;
-            try { fingerprint = fingerprint(minimized); }
+            try { fingerprint = fingerprint(minimized, period, startDate, endDate); }
             catch (RuntimeException exception) { return response(null, minimized.size(), UNAVAILABLE, 0); }
             Instant now = clock.instant();
             CacheEntry previous;
@@ -108,12 +115,12 @@ public class FinancialInsightsSummaryService {
         return new SourceInsight(insight.type(), insight.severity(), insight.title(), message);
     }
 
-    private String fingerprint(List<SourceInsight> source) {
+    private String fingerprint(List<SourceInsight> source, AnalyticsService.Period period, LocalDate startDate, LocalDate endDate) {
         try {
             String serialized = mapper.writeValueAsString(source);
             if (serialized.length() > 16_000) throw new IllegalArgumentException("Insight data too long");
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest((LocalDate.now(clock) + serialized).getBytes(StandardCharsets.UTF_8)));
+                    .digest((LocalDate.now(clock) + "|" + period + "|" + startDate + "|" + endDate + "|" + serialized).getBytes(StandardCharsets.UTF_8)));
         } catch (Exception exception) { throw new IllegalStateException("Unable to prepare summary"); }
     }
 

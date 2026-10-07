@@ -182,6 +182,36 @@ class FinancialInsightsSummaryServiceTests {
         verify(client, times(1)).summarize(anyList());
     }
 
+    @Test void selectedPeriodIsPassedToCanonicalInsightsAndCannotReuseAnotherPeriodsSummary() {
+        var from = LocalDate.of(2026, 1, 1);
+        var to = LocalDate.of(2026, 10, 15);
+        // Identical messages still belong to different reports and must not share a cached narrative.
+        var sameSource = insights.generateInsightsForUser(auth);
+        when(insights.generateInsightsForUser(auth, AnalyticsService.Period.THIS_YEAR, null, null))
+                .thenReturn(sameSource);
+        service.generateSummary(auth);
+        assertThat(service.generateSummary(auth, AnalyticsService.Period.THIS_YEAR, null, null).status()).isEqualTo(COOLDOWN);
+        clock.advance(31);
+        assertThat(service.generateSummary(auth, AnalyticsService.Period.THIS_YEAR, null, null).status()).isEqualTo(AVAILABLE);
+        when(insights.generateInsightsForUser(auth, AnalyticsService.Period.CUSTOM, from, to))
+                .thenReturn(sameSource);
+        assertThat(service.generateSummary(auth, AnalyticsService.Period.CUSTOM, from, to).status()).isEqualTo(COOLDOWN);
+        verify(insights, times(2)).generateInsightsForUser(auth, AnalyticsService.Period.THIS_YEAR, null, null);
+        verify(insights).generateInsightsForUser(auth, AnalyticsService.Period.CUSTOM, from, to);
+        verify(client, times(2)).summarize(anyList());
+    }
+    @Test void customDatesAreIncludedInSummaryCacheIdentity() {
+        var from = LocalDate.of(2026, 1, 1);
+        var to = LocalDate.of(2026, 1, 31);
+        var sameSource = insights.generateInsightsForUser(auth);
+        when(insights.generateInsightsForUser(auth, AnalyticsService.Period.CUSTOM, from, to)).thenReturn(sameSource);
+        when(insights.generateInsightsForUser(auth, AnalyticsService.Period.CUSTOM, from, to.plusDays(1))).thenReturn(sameSource);
+        service.generateSummary(auth, AnalyticsService.Period.CUSTOM, from, to);
+        assertThat(service.generateSummary(auth, AnalyticsService.Period.CUSTOM, from, to)).isNotNull();
+        assertThat(service.generateSummary(auth, AnalyticsService.Period.CUSTOM, from, to.plusDays(1)).status()).isEqualTo(COOLDOWN);
+        verify(client, times(1)).summarize(anyList());
+    }
+
     private void assertUnavailable() {
         var response = service.generateSummary(auth);
         assertThat(response.status()).isEqualTo(UNAVAILABLE);

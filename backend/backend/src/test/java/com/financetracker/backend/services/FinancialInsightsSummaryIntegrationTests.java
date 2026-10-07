@@ -127,6 +127,21 @@ class FinancialInsightsSummaryIntegrationTests {
         verify(provider, times(1)).summarize(anyList());
         assertThat(snapshot()).isEqualTo(before);
     }
+    @Test void selectedPeriodSummaryMatchesCanonicalAnnualInsightsAndIsReadOnly() throws Exception {
+        var before = snapshot();
+        var response = get(owner, "/api/financial-insights/summary?period=THIS_YEAR&userId=" + other.getId());
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = mapper.readTree(response.body());
+        assertThat(body.path("status").asText()).isEqualTo("AVAILABLE");
+        var canonical = mapper.readTree(get(owner, "/api/financial-insights?period=THIS_YEAR").body());
+        String expected = canonical.path("insights").get(0).path("message").asText()
+                + " " + canonical.path("insights").get(1).path("message").asText();
+        assertThat(body.path("summary").asText()).isEqualTo(expected);
+        assertThat(response.body()).doesNotContain("99999", "next 30 days");
+        assertThat(snapshot()).isEqualTo(before);
+        assertThat(get(owner, "/api/financial-insights/summary?period=CUSTOM").statusCode()).isEqualTo(400);
+    }
+
     private HttpResponse<String> get(User user, String path) throws Exception {
         var request = HttpRequest.newBuilder(URI.create(url(path))).GET();
         if (user != null) request.header("Authorization", "Bearer " + jwt.generateToken(user));

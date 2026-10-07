@@ -19,10 +19,7 @@ type DashboardOverviewProps = {
 };
 
 export function DashboardOverview({ auth }: DashboardOverviewProps) {
-  return <>
-    <DashboardReport auth={auth} />
-    <div className="pb-6"><FinancialInsightsSection preview /></div>
-  </>;
+  return <DashboardReport auth={auth} />;
 }
 
 function DashboardReport({ auth }: DashboardOverviewProps) {
@@ -34,6 +31,7 @@ function DashboardReport({ auth }: DashboardOverviewProps) {
   const [isDatePanelOpen, setIsDatePanelOpen] = useState(false);
   const [startDate, setStartDate] = useState(defaultRange.startDate);
   const [endDate, setEndDate] = useState(defaultRange.endDate);
+  const [reportRange, setReportRange] = useState(defaultRange);
 
   const loadDashboard = useCallback(async () => {
     setIsLoading(true);
@@ -45,6 +43,7 @@ function DashboardReport({ auth }: DashboardOverviewProps) {
         fetchTransactions({ startDate, endDate }),
       ]);
       setDashboard(report);
+      setReportRange({ startDate, endDate });
       setTransactions(activity);
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -158,6 +157,7 @@ function DashboardReport({ auth }: DashboardOverviewProps) {
 
       <RecentTransactionsCard transactions={transactions} />
       <UpcomingTransactionsCard />
+      <FinancialInsightsSection preview query={{ period: "CUSTOM", ...reportRange }} />
     </div>
   );
 }

@@ -3,23 +3,29 @@
 import Link from "next/link";
 import { ArrowRight, Info, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { getFinancialInsights } from "@/lib/api";
+import { getFinancialInsights, type FinancialInsightsQuery } from "@/lib/api";
 import { FinancialInsightCard } from "@/components/insights/FinancialInsightCard";
 import { FinancialInsightsSummary } from "@/components/insights/FinancialInsightsSummary";
 import type { FinancialInsight } from "@/types/financial-insights";
 
-export function FinancialInsightsSection({ preview = false }: { preview?: boolean }) {
+export function FinancialInsightsSection({ preview = false, query }: { preview?: boolean; query?: FinancialInsightsQuery }) {
+  // Remount request state on range changes so old cards and summaries cannot flash under a new filter.
+  return <FinancialInsightsContent key={JSON.stringify(query ?? null)} preview={preview} query={query} />;
+}
+
+function FinancialInsightsContent({ preview, query }: { preview: boolean; query?: FinancialInsightsQuery }) {
   const [insights, setInsights] = useState<FinancialInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
+  const { period, startDate, endDate } = query ?? {};
   const section = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     // Match existing page loading patterns and avoid duplicate development-mode requests.
     const timer = window.setTimeout(() => {
-      void getFinancialInsights(controller.signal).then((response) => {
+      void getFinancialInsights(controller.signal, period ? { period, startDate, endDate } : undefined).then((response) => {
         if (!controller.signal.aborted) {
           setInsights(response.insights);
           setFailed(false);
@@ -36,16 +42,7 @@ export function FinancialInsightsSection({ preview = false }: { preview?: boolea
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [retry]);
-
-  useEffect(() => {
-    if (preview || window.location.hash !== "#financial-insights") return;
-    const frame = window.requestAnimationFrame(() => {
-      section.current?.scrollIntoView({ block: "start" });
-      section.current?.focus({ preventScroll: true });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [preview]);
+  }, [retry, period, startDate, endDate]);
 
   const refresh = () => {
     setLoading(true);
@@ -62,7 +59,7 @@ export function FinancialInsightsSection({ preview = false }: { preview?: boolea
         <div className="min-w-0">
           <h2 id="financial-insights-heading" className={`${preview ? "text-base" : "text-xl"} font-semibold text-[#151515]`}>Financial Insights</h2>
           <p className={`mt-1 ${preview ? "text-xs" : "text-sm"} leading-5 text-[#77717d]`}>
-            {preview ? "Highlights from your latest financial activity." : "Based on your latest data. Each insight shows its own period, independent of the analytics filters."}
+            {query ? "Based on your selected period. Comparisons and monthly budgets show their applicable dates." : "Highlights from your latest financial activity."}
           </p>
         </div>
         {!preview && <button type="button" onClick={refresh} disabled={loading}
@@ -71,7 +68,7 @@ export function FinancialInsightsSection({ preview = false }: { preview?: boolea
         </button>}
       </div>
 
-      {!preview && <FinancialInsightsSummary key={retry} />}
+      {!preview && <FinancialInsightsSummary key={retry} query={query} />}
 
       <div className="mt-5" aria-busy={loading} aria-live="polite">
         {loading ? (

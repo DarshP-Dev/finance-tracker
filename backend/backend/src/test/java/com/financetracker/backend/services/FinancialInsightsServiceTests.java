@@ -209,6 +209,82 @@ class FinancialInsightsServiceTests {
     }
 
     private List<FinancialInsightResponse> result() { return service.generateInsightsForUser(auth).insights(); }
+    @Test void selectedYearUsesYearToDateAndPreviousYearRatherThanCurrentMonth() {
+        LocalDate yearStart = today.withDayOfYear(1);
+        rangeTotals(yearStart, today, "1600", "950");
+        rangeTotals(yearStart.minusYears(1), today.minusYears(1), "1000", "1000");
+        var result = service.generateInsightsForUser(auth, AnalyticsService.Period.THIS_YEAR, null, null).insights();
+        assertThat(result).filteredOn(i -> i.key().equals("savings-rate")).singleElement().satisfies(i -> {
+            assertThat(i.metricValue()).isEqualByComparingTo("40.63");
+            assertThat(i.message()).contains("2026-01-01 through 2026-10-15", "$650.00", "2025-01-01");
+            assertThat(i.from()).isEqualTo(yearStart);
+        });
+        verifyNoInteractions(recurring);
+    }
+    @Test void selectedLastMonthComparesWithItsPreviousCalendarMonth() {
+        rangeTotals(oldStart, oldEnd, "0", "120");
+        rangeTotals(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 31), "0", "100");
+        var result = service.generateInsightsForUser(auth, AnalyticsService.Period.LAST_MONTH, null, null).insights();
+        assertThat(result).filteredOn(i -> i.key().equals("spending-change")).singleElement().satisfies(i ->
+                assertThat(i.message()).contains("20% higher", "2026-09-01 through 2026-09-30", "2026-08-01 through 2026-08-31")
+                        .doesNotContain("this month"));
+        verifyNoInteractions(recurring);
+    }
+    @Test void customRangeUsesInclusiveEquallyLongPreviousRangeAndCategoryTotals() {
+        LocalDate from = LocalDate.of(2026, 5, 10), to = LocalDate.of(2026, 5, 19);
+        when(transactions.sumExpensesByCategoryBetweenDates(7L, from, to))
+                .thenReturn(List.<Object[]>of(new Object[]{TransactionCategory.DINING, new BigDecimal("150")}));
+        when(transactions.sumExpensesByCategoryBetweenDates(7L, LocalDate.of(2026, 4, 30), LocalDate.of(2026, 5, 9)))
+                .thenReturn(List.<Object[]>of(new Object[]{TransactionCategory.DINING, new BigDecimal("100")}));
+        var result = service.generateInsightsForUser(auth, AnalyticsService.Period.CUSTOM, from, to).insights();
+        assertThat(result).filteredOn(i -> i.key().equals("category-dining")).singleElement().satisfies(i ->
+                assertThat(i.message()).contains("50% higher", "2026-05-10 through 2026-05-19", "2026-04-30 through 2026-05-09"));
+        verifyNoInteractions(recurring);
+    }
+    @Test void rollingRangesCompareWithAnEquallyLongPrecedingRange() {
+        for (var period : List.of(AnalyticsService.Period.LAST_3_MONTHS, AnalyticsService.Period.LAST_6_MONTHS)) {
+            LocalDate from = start.minusMonths(period == AnalyticsService.Period.LAST_3_MONTHS ? 2 : 5);
+            long days = java.time.temporal.ChronoUnit.DAYS.between(from, today) + 1;
+            service.generateInsightsForUser(auth, period, null, null);
+            verify(transactions).sumAmountByUserIdAndTypeBetweenDates(7L, TransactionType.EXPENSE, from, today);
+            verify(transactions).sumAmountByUserIdAndTypeBetweenDates(7L, TransactionType.EXPENSE, from.minusDays(days), from.minusDays(1));
+        }
+    }
+    @Test void investmentPurchasesAreScopedToSelectedRangeInsteadOfAllTimeHoldings() {
+        when(investments.sumCostByTicker(7L)).thenReturn(List.<Object[]>of(new Object[]{"ABC", new BigDecimal("5400")}));
+        when(investments.sumCostBetweenDates(7L, oldStart, oldEnd)).thenReturn(new BigDecimal("200"));
+        var result = service.generateInsightsForUser(auth, AnalyticsService.Period.LAST_MONTH, null, null).insights();
+        assertThat(result).filteredOn(i -> i.key().equals("recorded-investments")).singleElement().satisfies(i ->
+                assertThat(i.message()).contains("$200.00", "2026-09-01", "purchase cost").doesNotContain("$5400.00"));
+    }
+    @Test void historicalBudgetDoesNotUseTodaysPace() {
+        when(budgets.findByUserIdAndMonthOrderByCategoryAsc(7L, oldStart)).thenReturn(List.of(
+                Budget.builder().category(TransactionCategory.DINING).monthlyLimit(new BigDecimal("100")).build()));
+        when(transactions.sumExpensesByCategoryBetweenDates(7L, oldStart, oldEnd))
+                .thenReturn(List.<Object[]>of(new Object[]{TransactionCategory.DINING, new BigDecimal("85")}));
+        var result = service.generateInsightsForUser(auth, AnalyticsService.Period.LAST_MONTH, null, null).insights();
+        assertThat(result).filteredOn(i -> i.key().equals("budget-dining")).singleElement().satisfies(i ->
+                assertThat(i.message()).contains("2026-09", "85%").doesNotContain("pace", "complete"));
+    }
+    @Test void partialHistoricalMonthDoesNotShowWholeMonthBudget() {
+        budget("100", "90");
+        var result = service.generateInsightsForUser(auth, AnalyticsService.Period.CUSTOM, start, start.plusDays(5)).insights();
+        assertThat(result).noneMatch(i -> i.type() == FinancialInsightResponse.Type.BUDGET);
+    }
+    @Test void futureCustomRangeClipsForecastToSelectedDates() {
+        LocalDate to = today.plusDays(3);
+        when(recurring.getForecastWithUpcoming(auth, today, to)).thenReturn(new RecurringForecastService.ForecastWithUpcoming(
+                new RecurringForecastResponse(today, to, BigDecimal.ZERO, new BigDecimal("50"), new BigDecimal("-50"), 0, 1), List.of()));
+        var result = service.generateInsightsForUser(auth, AnalyticsService.Period.CUSTOM, start, to).insights();
+        assertThat(result).filteredOn(i -> i.key().equals("recurring-summary")).singleElement().satisfies(i -> {
+            assertThat(i.to()).isEqualTo(to);
+            assertThat(i.message()).contains("2026-10-15 through 2026-10-18").doesNotContain("next 30 days");
+        });
+    }
+    private void rangeTotals(LocalDate from, LocalDate to, String income, String expense) {
+        when(transactions.sumAmountByUserIdAndTypeBetweenDates(7L, TransactionType.INCOME, from, to)).thenReturn(new BigDecimal(income));
+        when(transactions.sumAmountByUserIdAndTypeBetweenDates(7L, TransactionType.EXPENSE, from, to)).thenReturn(new BigDecimal(expense));
+    }
     private List<String> keys() { return result().stream().map(FinancialInsightResponse::key).toList(); }
     private FinancialInsightResponse insight(String key) {
         return result().stream().filter(i -> i.key().equals(key)).findFirst().orElseThrow();
