@@ -81,15 +81,44 @@ class GeminiInsightSummaryClientTests {
         assertThat(submitted.get(0).path("message").asText()).isEqualTo(source.getFirst().message());
         assertThat(request.has("tools")).isFalse();
         assertThat(request.path("generationConfig").path("maxOutputTokens").asInt()).isEqualTo(384);
-        assertThat(request.path("generationConfig").path("responseFormat").path("text").path("schema").path("additionalProperties").asBoolean()).isFalse();
+        assertThat(request.path("generationConfig").has("responseFormat")).isFalse();
+        assertThat(request.path("generationConfig").path("responseMimeType").asText()).isEqualTo("application/json");
+        assertThat(request.path("generationConfig").path("responseJsonSchema").path("type").asText()).isEqualTo("object");
+        assertThat(request.path("generationConfig").path("responseJsonSchema").path("required").get(0).asText()).isEqualTo("summary");
+        assertThat(request.path("generationConfig").path("responseJsonSchema").path("additionalProperties").asBoolean()).isFalse();
         assertThat(calls.get()).isEqualTo(1);
     }
-    @ParameterizedTest @ValueSource(ints = {401, 429, 500, 503})
+    @ParameterizedTest @ValueSource(ints = {400, 401, 429, 500, 503})
     void providerErrorsNeverRetryOrExposeResponse(int code) {
         status = code; body = "provider-private-error local-test-key-not-a-secret";
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(GeminiInsightSummaryClient.class);
+        var captured = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        captured.start();
+        logger.addAppender(captured);
+        try {
         assertThatThrownBy(() -> client.summarize(source)).isInstanceOf(InsightSummaryClient.ProviderUnavailableException.class)
                 .hasMessage("AI summary provider unavailable").hasNoCause();
         assertThat(calls.get()).isEqualTo(1);
+        assertThat(captured.list).extracting(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                .contains("Gemini summary request failed (HTTP " + code + ")")
+                .allSatisfy(message -> assertThat(message).doesNotContain("provider-private-error", "local-test-key-not-a-secret"));
+        } finally { logger.detachAppender(captured); captured.stop(); }
+    }
+    @ParameterizedTest @ValueSource(strings = {"API_KEY_INVALID", "API_KEY_SERVICE_BLOCKED", "BILLING_DISABLED", "untrusted-secret-reason"})
+    void errorCategoriesDoNotExposeProviderMessagesOrUnknownReasons(String reason) {
+        status = 400;
+        body = mapper.writeValueAsString(Map.of("error", Map.of("message", "private financial text local-test-key-not-a-secret",
+                "details", List.of(Map.of("reason", reason)))));
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(GeminiInsightSummaryClient.class);
+        var captured = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        captured.start(); logger.addAppender(captured);
+        try {
+            rejects();
+            String category = reason.startsWith("untrusted") ? "UNCLASSIFIED" : reason;
+            assertThat(captured.list).extracting(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+                    .contains("Gemini summary provider error category: " + category)
+                    .allSatisfy(message -> assertThat(message).doesNotContain("private financial text", "local-test-key-not-a-secret", "untrusted-secret-reason"));
+        } finally { logger.detachAppender(captured); captured.stop(); }
     }
     @Test void requestHasBoundedTimeout() {
         properties.setTimeout(Duration.ofMillis(200)); delay = 1000;

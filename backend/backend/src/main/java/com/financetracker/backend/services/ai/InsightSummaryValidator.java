@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 /** Defense in depth, not a proof of semantic accuracy. The source cards remain canonical. */
 @Component
 public class InsightSummaryValidator {
+    public enum RejectionReason { NONE, EMPTY, TOO_LONG, CONTROL_CHARACTERS, MARKUP, UNSUPPORTED_LANGUAGE, UNKNOWN_NUMBER_OR_UNIT, UNKNOWN_SPELLED_NUMBER }
     private static final Pattern NUMBER = Pattern.compile("(?<![\\p{L}\\p{N}])[-+−]?\\$?\\d+(?:,\\d{3})*(?:\\.\\d+)?%?");
     private static final Pattern UNSUPPORTED = Pattern.compile(
             "(?i)\\b(you should|recommend\\w*|buy|sell|borrow|loan|credit product|tax advice|legal advice|invest in|" +
@@ -20,17 +21,23 @@ public class InsightSummaryValidator {
             "sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion)\\b");
 
     public boolean isValid(String summary, List<InsightSummaryClient.SourceInsight> source, int maxLength) {
-        if (summary == null || summary.isBlank() || summary.length() > maxLength
-                || summary.codePoints().anyMatch(c -> Character.isISOControl(c) && c != '\n' && c != '\r')
-                || summary.contains("<") || summary.contains(">") || UNSUPPORTED.matcher(summary).find()) return false;
+        return rejectionReason(summary, source, maxLength) == RejectionReason.NONE;
+    }
+
+    public RejectionReason rejectionReason(String summary, List<InsightSummaryClient.SourceInsight> source, int maxLength) {
+        if (summary == null || summary.isBlank()) return RejectionReason.EMPTY;
+        if (summary.length() > maxLength) return RejectionReason.TOO_LONG;
+        if (summary.codePoints().anyMatch(c -> Character.isISOControl(c) && c != '\n' && c != '\r')) return RejectionReason.CONTROL_CHARACTERS;
+        if (summary.contains("<") || summary.contains(">")) return RejectionReason.MARKUP;
+        if (UNSUPPORTED.matcher(summary).find()) return RejectionReason.UNSUPPORTED_LANGUAGE;
         Set<String> allowed = new HashSet<>();
         String sourceText = source.stream().map(InsightSummaryClient.SourceInsight::message)
                 .reduce("", (a, b) -> a + " " + b);
         NUMBER.matcher(sourceText).results().forEach(m -> allowed.add(numberIdentity(m.group())));
-        if (NUMBER.matcher(summary).results().anyMatch(m -> !allowed.contains(numberIdentity(m.group())))) return false;
+        if (NUMBER.matcher(summary).results().anyMatch(m -> !allowed.contains(numberIdentity(m.group())))) return RejectionReason.UNKNOWN_NUMBER_OR_UNIT;
         String lowerSource = sourceText.toLowerCase(Locale.ROOT);
-        if (SPELLED_NUMBER.matcher(summary).results().anyMatch(m -> !Pattern.compile("\\b" + m.group().toLowerCase(Locale.ROOT) + "\\b").matcher(lowerSource).find())) return false;
-        return true;
+        if (SPELLED_NUMBER.matcher(summary).results().anyMatch(m -> !Pattern.compile("\\b" + m.group().toLowerCase(Locale.ROOT) + "\\b").matcher(lowerSource).find())) return RejectionReason.UNKNOWN_SPELLED_NUMBER;
+        return RejectionReason.NONE;
     }
 
     private String numberIdentity(String text) {

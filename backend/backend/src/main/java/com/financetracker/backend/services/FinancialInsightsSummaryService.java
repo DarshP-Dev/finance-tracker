@@ -72,7 +72,11 @@ public class FinancialInsightsSummaryService {
             FinancialInsightsSummaryResponse result;
             try {
                 String text = client.summarize(minimized);
-                if (!validator.isValid(text, minimized, properties.getMaxOutputLength())) throw new IllegalArgumentException("Invalid summary");
+                var rejection = validator.rejectionReason(text, minimized, properties.getMaxOutputLength());
+                if (rejection != InsightSummaryValidator.RejectionReason.NONE) {
+                    LOGGER.warn("Gemini summary output rejected by financial insight validation (reason {})", rejection);
+                    throw new IllegalArgumentException("Invalid summary");
+                }
                 result = response(text.strip(), minimized.size(), AVAILABLE, 0);
                 LOGGER.info("AI insight summary request succeeded");
             } catch (RuntimeException exception) {

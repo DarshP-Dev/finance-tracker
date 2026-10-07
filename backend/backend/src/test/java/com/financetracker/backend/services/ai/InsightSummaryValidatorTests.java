@@ -22,5 +22,18 @@ class InsightSummaryValidatorTests {
         assertThat(validator.isValid("You track 2 investment positions with $100.00 in recorded purchases. This is purchase cost, not current market value.", recorded, 1000)).isTrue();
     }
     @Test void rejectsEmptyNullAndOversizedOutput() { assertThat(valid(null)).isFalse(); assertThat(valid(" ")).isFalse(); assertThat(valid("a".repeat(1001))).isFalse(); }
+    @Test void diagnosticsDifferentiateLengthFromChangedNumbersWithoutReturningFinancialText() {
+        assertThat(validator.rejectionReason("a".repeat(1001), source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.TOO_LONG);
+        assertThat(validator.rejectionReason("Your savings rate is 26%.", source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.UNKNOWN_NUMBER_OR_UNIT);
+        assertThat(validator.rejectionReason("Your savings total $27.", source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.UNKNOWN_NUMBER_OR_UNIT);
+    }
+    @Test void diagnosticsIdentifyOtherRejectionsAndAcceptValidOutput() {
+        assertThat(validator.rejectionReason(null, source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.EMPTY);
+        assertThat(validator.rejectionReason("You should buy stocks.", source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.UNSUPPORTED_LANGUAGE);
+        assertThat(validator.rejectionReason("You have forty positions.", source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.UNKNOWN_SPELLED_NUMBER);
+        assertThat(validator.rejectionReason("<p>Text</p>", source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.MARKUP);
+        assertThat(validator.rejectionReason("Text\u0000", source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.CONTROL_CHARACTERS);
+        assertThat(validator.rejectionReason("Your savings rate is 27%.", source, 1000)).isEqualTo(InsightSummaryValidator.RejectionReason.NONE);
+    }
     private boolean valid(String text) { return validator.isValid(text, source, 1000); }
 }

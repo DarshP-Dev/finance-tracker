@@ -9,13 +9,20 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ExecutionException;
+import java.net.http.HttpTimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class GeminiInsightSummaryClient implements InsightSummaryClient {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GeminiInsightSummaryClient.class);
     static final String INSTRUCTIONS = """
             Summarize ONLY the supplied calculated financial insights in 2-4 concise sentences,
             approximately 50-120 words, in a professional, neutral tone. Return only the requested
@@ -24,6 +31,9 @@ public class GeminiInsightSummaryClient implements InsightSummaryClient {
             dates, percentages, rates, projections, or calculations. Never aggregate or recalculate.
             Copy numerical values with their currency signs, percent signs, and negative signs
             exactly from the supplied messages; do not spell numbers out or change units.
+            Do not round or abbreviate monetary amounts or percentages. When uncertain, omit
+            numerical details rather than approximate. Focus on the highest-priority insights;
+            you do not need to cover every insight.
             Preserve month-to-date versus full previous-month distinctions. Describe recurring
             forecasts as known scheduled recurring activity, excluding other future spending;
             never imply a complete spending forecast or guaranteed outcome. Recorded investment
@@ -75,7 +85,7 @@ public class GeminiInsightSummaryClient implements InsightSummaryClient {
                             " Maximum summary length: " + properties.getMaxOutputLength() + " characters."))),
                     "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", mapper.writeValueAsString(insights))))),
                     "generationConfig", Map.of("maxOutputTokens", properties.getMaxOutputTokens(), "candidateCount", 1,
-                            "responseFormat", Map.of("text", Map.of("mimeType", "application/json", "schema", schema))));
+                            "responseMimeType", "application/json", "responseJsonSchema", schema));
             String endpoint = properties.getEndpoint().replaceAll("/+$", "") + "/" + properties.getModel() + ":generateContent";
             var request = HttpRequest.newBuilder(URI.create(endpoint))
                     .timeout(properties.getTimeout()).header("x-goog-api-key", properties.getApiKey())
@@ -85,7 +95,12 @@ public class GeminiInsightSummaryClient implements InsightSummaryClient {
             var future = http.sendAsync(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             try {
                 var response = future.get(properties.getTimeout().toMillis(), TimeUnit.MILLISECONDS);
-                if (response.statusCode() != 200 || response.body().length() > 65_536) throw new ProviderUnavailableException();
+                if (response.statusCode() != 200) {
+                    LOGGER.warn("Gemini summary request failed (HTTP {})", response.statusCode());
+                    LOGGER.warn("Gemini summary provider error category: {}", safeErrorCategory(response.body()));
+                    throw new ProviderUnavailableException();
+                }
+                if (response.body().length() > 65_536) throw new ProviderUnavailableException();
                 return parseSummary(response.body());
             } finally {
                 if (!future.isDone()) future.cancel(true);
@@ -94,16 +109,51 @@ public class GeminiInsightSummaryClient implements InsightSummaryClient {
             Thread.currentThread().interrupt();
             throw new ProviderUnavailableException();
         } catch (Exception exception) {
+            Throwable failure = exception instanceof ExecutionException ? exception.getCause() : exception;
+            if (failure instanceof TimeoutException || failure instanceof HttpTimeoutException) {
+                LOGGER.warn("Gemini summary request timed out");
+            } else if (!(exception instanceof ProviderUnavailableException)) {
+                LOGGER.warn("Gemini summary request failed (exception type {})", exception.getClass().getSimpleName());
+            }
             // Never propagate provider bodies, credentials, prompts, or cause chains.
             throw new ProviderUnavailableException();
         }
     }
 
+    /** Only fixed categories may leave the provider response; never log its message or metadata. */
+    private String safeErrorCategory(String body) {
+        if (body == null || body.length() > 65_536) return "UNCLASSIFIED";
+        try {
+            JsonNode error = mapper.readTree(body).path("error");
+            Set<String> knownReasons = Set.of("API_KEY_INVALID", "API_KEY_EXPIRED", "API_KEY_SERVICE_BLOCKED",
+                    "API_KEY_HTTP_REFERRER_BLOCKED", "API_KEY_IP_ADDRESS_BLOCKED", "SERVICE_DISABLED", "BILLING_DISABLED");
+            for (JsonNode detail : error.path("details")) {
+                String reason = detail.path("reason").asText();
+                if (knownReasons.contains(reason)) return reason;
+            }
+            String message = error.path("message").asText();
+            if (message.contains("API key not valid")) return "API_KEY_INVALID";
+            if (message.contains("Unknown name") || message.contains("Unknown field")) return "REQUEST_FIELD_UNSUPPORTED";
+            String status = error.path("status").asText();
+            return Set.of("INVALID_ARGUMENT", "NOT_FOUND", "PERMISSION_DENIED", "UNAUTHENTICATED", "RESOURCE_EXHAUSTED")
+                    .contains(status) ? status : "UNCLASSIFIED";
+        } catch (RuntimeException exception) { return "UNCLASSIFIED"; }
+    }
+
     private String parseSummary(String body) {
         JsonNode root = mapper.readTree(body);
-        if (root.has("promptFeedback") && root.path("promptFeedback").has("blockReason")) throw new ProviderUnavailableException();
+        if (root.has("promptFeedback") && root.path("promptFeedback").has("blockReason")) {
+            LOGGER.warn("Gemini summary response was blocked");
+            throw new ProviderUnavailableException();
+        }
         JsonNode candidates = root.path("candidates");
         if (!candidates.isArray() || candidates.size() != 1 || !"STOP".equals(candidates.get(0).path("finishReason").asText())) {
+            if (candidates.isArray() && candidates.size() == 1
+                    && "MAX_TOKENS".equals(candidates.get(0).path("finishReason").asText())) {
+                LOGGER.warn("Gemini summary response reached the output token limit");
+            } else {
+                LOGGER.warn("Gemini summary response was missing or incomplete");
+            }
             throw new ProviderUnavailableException();
         }
         String text = null;
@@ -118,7 +168,10 @@ public class GeminiInsightSummaryClient implements InsightSummaryClient {
         }
         if (text == null || text.length() > properties.getMaxOutputLength() + 100) throw new ProviderUnavailableException();
         JsonNode payload = mapper.readTree(text);
-        if (!payload.isObject() || payload.size() != 1 || !payload.path("summary").isString()) throw new ProviderUnavailableException();
+        if (!payload.isObject() || payload.size() != 1 || !payload.path("summary").isString()) {
+            LOGGER.warn("Gemini summary response did not match the expected JSON schema");
+            throw new ProviderUnavailableException();
+        }
         return payload.path("summary").asText();
     }
 }
