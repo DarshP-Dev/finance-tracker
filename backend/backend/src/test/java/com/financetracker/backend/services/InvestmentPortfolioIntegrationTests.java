@@ -47,6 +47,7 @@ class InvestmentPortfolioIntegrationTests {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private ObjectMapper mapper;
     @MockitoBean private MarketDataProvider provider;
+    @MockitoBean private MarketQuoteSnapshotStore snapshots;
     @MockitoBean private InsightSummaryClient summaryClient;
     private User owner, other;
     @BeforeEach void setup() {
@@ -111,9 +112,10 @@ class InvestmentPortfolioIntegrationTests {
         assertThat(request(owner, "/api/dashboard", "GET", null).statusCode()).isEqualTo(200);
         assertThat(request(owner, "/api/analytics", "GET", null).statusCode()).isEqualTo(200);
         var coldOther = mapper.readTree(request(other, "/api/investments/portfolio", "GET", null).body());
-        assertThat(coldOther.path("summary").path("totalMarketValue").isNull()).isTrue();
+        assertThat(coldOther.path("summary").path("status").asText()).isEqualTo("STALE");
         assertThat(coldOther.toString()).doesNotContain("AAPL", "MSFT");
         verify(provider, times(1)).getQuotes(Set.of("AAPL", "MSFT"));
+        verify(provider, times(1)).getQuotes(Set.of("OTHER"));
         assertThat(snapshot()).isEqualTo(before);
     }
     @Test void jwtAuthenticationAndUserIsolationAreEnforced() throws Exception {

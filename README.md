@@ -141,22 +141,22 @@ Its [current Basic plan](https://twelvedata.com/pricing) lists 8 credits/minute 
 Basic is listed for internal non-display usage; check the provider's display-data
 entitlements for your intended deployment. Configure matching quotas if your plan
 differs. The app never polls prices or automatically retries a failed provider call.
-Quote HTTP requests are also suppressed outside the **regular US equity session**
+Quote HTTP refreshes are suppressed for usable cached/stored prices outside the **regular US equity session**
 (9:30 a.m.–4:00 p.m. America/New_York, with daylight saving time). A local calendar
 applies scheduled weekends, NYSE holidays, and 1:00 p.m. early closes; it makes no
 market-state API calls. The calendar follows [NYSE hours and holidays](https://www.nyse.com/trade/hours-calendars)
 and does not predict extraordinary exchange closures. This policy targets US
 equities/ETFs; foreign-market and extended-hours sessions are not supported.
-Manual refresh, Dashboard, Analytics, and new tickers obey the same restriction.
-During a closure, the latest trading session's cached snapshot remains visible
-even across a holiday weekend, with its original timestamp and stale label once
-the freshness TTL expires. It is the last retrieved price, not a guaranteed closing
-price. Older snapshots still obey the stale-age limit. Normal cache/quota rules
+Manual refresh, Dashboard, Analytics, and new tickers obey the same resolution policy.
+During a closure, an acceptable last-known memory or PostgreSQL snapshot remains visible
+even across a holiday weekend, with its original timestamps and a `STALE` label.
+It is the last retrieved price, not a guaranteed closing price. Normal cache/quota rules
 resume on an on-demand request during the next open session; there is no timer
 that contacts the provider at opening. The Investments page loads once on entry
 and retains that response until navigation, an explicit refresh, or a purchase edit.
-The bounded cache is in memory: a backend restart or a never-quoted ticker while
-closed shows prices unavailable until an open session, without spending credits.
+The bounded L1 cache is in memory; a lazy PostgreSQL L2 snapshot survives backend restarts.
+Only symbols without any usable memory/persisted price are eligible for a guarded,
+batched provider fetch while closed. Successful quotes are immediately persisted.
 Uncached symbols exceeding the guard remain rate limited until a later refresh.
 Limits/cache are process-local; multiple hosting instances share the provider's
 account quota but do not share this local guard. Unpriced negative lookups are cached
@@ -210,7 +210,8 @@ source. Invented numbers, realized-profit claims, and recommendations remain rej
 The existing provider adapter, quote mapping, aggregation, financial calculations,
 and symbol cache are preserved. This portfolio tracker favors fewer provider calls
 over frequent price updates. All features share the same authoritative cache:
-fresh quotes default to **10 minutes**, usable stale fallback to **24 hours**.
+fresh quotes default to **10 minutes**, in-memory transient-failure fallback to **24 hours**,
+and persistent/closed-session last-known fallback to **7 days**.
 The existing `MARKET_DATA_CACHE_DURATION` and `MARKET_DATA_STALE_DURATION` settings
 remain compatible; no new polling, scheduled refresh, streams, or automatic retries
 are introduced. A browser reload does not invalidate quotes.
@@ -282,7 +283,7 @@ After observing that twice, retrieval delays the next check to 30 minutes by def
 this is a simple observation-based optimization, not an exchange calendar. Status
 still becomes `STALE` after the ordinary fresh TTL and retains the actual retrieval
 and market timestamps. Changed quotes return to the normal TTL. Stale age never
-exceeds the configured fallback window.
+exceeds the applicable memory or persisted fallback window.
 
 `MarketQuoteService.usage()` provides internal numeric counters for batch attempts,
 requested symbols, cache hits/misses, stale hits, quota/cooldown/backoff blocks,
@@ -305,6 +306,79 @@ transaction during provider retrieval. Manual provider-account verification stil
 requires your own key and exchange entitlements. Test valid/unknown tickers, positive
 and negative returns, provider outages, mobile cards, Dashboard, Analytics, and the
 Gemini summary after enabling your configuration.
+
+### Persistent Last-Known Market Quotes
+
+`market_quote_snapshots` stores **one latest valid USD quote per normalized symbol**.
+The symbol is the primary key (and lookup index), not a user or holding identifier.
+Rows include decimal price/previous close, currency, optional provider market timestamp,
+actual `fetched_at`, provider source, and row creation/update timestamps. The existing
+Hibernate `ddl-auto=update` configuration creates this table; no separate migration
+framework or historical daily-price table is added. Each successful provider batch
+updates memory and atomically upserts PostgreSQL. Older retrievals cannot overwrite
+newer snapshots from another backend instance. Saving snapshots uses a short,
+independent transaction **after** provider HTTP; errors are logged without exception
+details, credentials, or provider bodies and leave successful memory quotes usable.
+
+Resolution is centralized in `MarketQuoteService`; all portfolio pages reuse it:
+
+1. **L1 memory:** reuse a fresh quote without a DB or provider lookup. Closed sessions
+   also reuse acceptable last-known memory quotes, retaining original timestamps.
+2. **L2 PostgreSQL:** batch-load unresolved symbols lazily. No startup preload or
+   query per ticker is needed. Persisted quotes warm memory but always carry `STALE`
+   metadata; their retrieval time is never changed merely by reading them.
+3. **Twelve Data:** batch only eligible unique symbols, applying the existing credit
+   budgets, reserves, cooldown, negative caching, and provider-wide backoff.
+
+While **open**, expired/missing on-demand L1 quotes are still eligible for a fresh
+provider request even when L2 exists. L2 is fallback if the provider is unavailable
+or quota-limited, never an indefinitely fresh intraday price. The next regular
+session also refreshes previous-session/pre-open quotes on demand. `CACHE_ONLY`
+never contacts the provider; `MISSING_ONLY` preserves acceptable stored prices.
+
+While **closed**, usable L1/L2 quotes require **zero** provider requests, including
+manual Refresh and navigation between Investments, Dashboard and Analytics. If
+neither layer has a usable quote, one guarded batch attempt is permitted for the
+missing symbols. Success immediately persists and warms L1, so later requests and
+backend restarts reuse it. Failures use the existing negative cache/backoff; there
+are no automatic retries. The same calendar policy covers nights, weekends,
+scheduled holidays and early-close afternoons. No 4 p.m. task, polling, WebSockets,
+or opening-time scheduler is involved.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MARKET_DATA_PERSISTED_MAX_AGE_DAYS` | `7` | Maximum usable L2/closed-session quote retrieval age, bounded to 1–365 days |
+| `MARKET_DATA_CACHE_DURATION` | `10m` | Existing open-session L1 freshness setting; unchanged |
+| `MARKET_DATA_STALE_DURATION` | `24h` | Existing open-session L1 transient-failure window; unchanged |
+
+Age is measured from **original retrieval time**, not row update time or invented
+market timestamps. At the age boundary a stored quote becomes unusable; a guarded
+on-demand fetch may replace it, otherwise its price is unavailable (`null`, never
+zero). `MARKET_DATA_ENABLED=false` still disables market valuations entirely. When
+enabled, usable stored quotes can remain available even if the provider key is
+temporarily unconfigured. Existing backend-only key variables are unchanged.
+
+Dashboard and Analytics calculate the same market value, unrealized gain/loss,
+return and allocation using acceptable last-known quotes. The shared UI labels them
+**Last known market prices** and shows the original retrieval time; holding cards
+also retain the provider market timestamp when available. Financial Insights keeps
+its stricter **complete, fresh portfolio only** performance rule: persisted/stale
+quotes retain recorded-cost insights instead. Gemini receives only those canonical
+insights and can never fetch quotes or receive raw snapshot tables.
+
+The snapshot is shared public market data; JWT ownership still controls which
+investment lots/holdings enter a user's portfolio. Quote snapshot writes never
+modify purchases, transactions, budgets or recurring schedules. L1 and quota guards
+remain process-local, so multiple instances still require divided/shared allowances.
+
+Tests use fake providers and synthetic symbols, including real PostgreSQL/JWT/HTTP
+coverage of upserts, uniqueness, concurrent writes, memory loss, closed sessions,
+cross-page valuations, age limits and user ownership. No real Twelve Data or Gemini
+credits are consumed. To verify with your own data, load Investments while open,
+restart the backend while closed, then open Investments/Dashboard/Analytics and
+check retained values/timestamps with no provider batch in the debug logs. A ticker
+without a saved quote can fetch once subject to quota; next open-session requests
+resume normal refreshes. Keep private API keys in ignored backend configuration.
 
 ## Financial Insights Phase 1
 

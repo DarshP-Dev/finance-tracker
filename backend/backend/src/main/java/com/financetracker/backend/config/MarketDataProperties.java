@@ -17,6 +17,7 @@ public class MarketDataProperties {
     private String endpoint = "https://api.twelvedata.com/quote";
     private Duration cacheDuration = Duration.ofMinutes(10);
     private Duration staleDuration = Duration.ofHours(24);
+    private int persistedMaxAgeDays = 7;
     private Duration timeout = Duration.ofSeconds(6);
     private int creditsPerMinute = 8;
     private int creditsPerDay = 800;

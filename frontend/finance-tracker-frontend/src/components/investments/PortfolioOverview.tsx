@@ -14,7 +14,7 @@ export function signedReturn(value: number | null | undefined) {
 export function priceStatus(status: Portfolio["holdings"][number]["quoteStatus"]) {
   switch (status) {
     case "AVAILABLE": return "Latest available quote";
-    case "STALE": return "Stale cached quote";
+    case "STALE": return "Last known market price";
     case "DISABLED": return "Market data disabled";
     case "UNKNOWN_SYMBOL": case "INVALID_SYMBOL": return "Ticker could not be resolved";
     case "RATE_LIMITED": return "Provider request limit reached";
@@ -43,7 +43,7 @@ export function PortfolioOverview({ portfolio, allocation = false }: { portfolio
       <Value label="Return on recorded cost" value={signedReturn(summary.totalReturnPercentage)} tone={summary.totalReturnPercentage} />
     </dl>
     <p role="status" className="mt-4 text-xs leading-5 text-[#77717d]">
-      {summary.status === "EMPTY" ? "No holdings recorded yet." : summary.status === "STALE" ? "Stale cached prices: values are older than the freshness window and retain their original quote retrieval time." : summary.status === "PARTIAL" ? `Prices are available for ${summary.quotedHoldingCount} of ${summary.holdingCount} holdings. Complete portfolio totals and allocation are unavailable.` : summary.status === "DISABLED" ? "Market data is disabled. Recorded cost remains available." : summary.status === "UNAVAILABLE" ? "Market prices are unavailable. Recorded cost remains available." : "Latest available prices; values are unrealized, not realized profit."}
+      {summary.status === "EMPTY" ? "No holdings recorded yet." : summary.status === "STALE" ? "Last known market prices: the market may be closed or a fresh quote unavailable. Values retain their original retrieval time." : summary.status === "PARTIAL" ? `Prices are available for ${summary.quotedHoldingCount} of ${summary.holdingCount} holdings. Complete portfolio totals and allocation are unavailable.` : summary.status === "DISABLED" ? "Market data is disabled. Recorded cost remains available." : summary.status === "UNAVAILABLE" ? "Market prices are unavailable. Recorded cost remains available." : "Latest available prices; values are unrealized, not realized profit."}
       {summary.lastUpdated && ` Retrieved ${quoteTime(summary.lastUpdated)}.`}
     </p>
     {allocation && <div className="mt-6 border-t border-[#eeeaf1] pt-5">

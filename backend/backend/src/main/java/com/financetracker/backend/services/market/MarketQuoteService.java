@@ -18,7 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-/** Shared symbol cache and process-local credit guard. Concurrent misses share one batch. */
+/** Shared L1 cache, lazy PostgreSQL L2 snapshots and process-local credit guard. */
 @Service @RequiredArgsConstructor
 public class MarketQuoteService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MarketQuoteService.class);
@@ -28,10 +28,13 @@ public class MarketQuoteService {
     public record Usage(long providerRequests, long symbolsRequested, long cacheHits, long cacheMisses,
                         long staleCacheHits, long quotaBlocks, long cooldownBlocks, long backoffBlocks,
                         int lastBatchSize, int minuteCredits, int dayCredits, int minuteRequests, int dayRequests) {}
-    private record Entry(MarketQuote quote, MarketDataProvider.Status failure, Instant fetchedAt, Instant nextAttempt) {}
+    public enum QuoteOrigin { PROVIDER, PERSISTED }
+    private record Entry(MarketQuote quote, MarketDataProvider.Status failure, Instant fetchedAt,
+                         Instant nextAttempt, QuoteOrigin origin) {}
     private final MarketDataProvider provider;
     private final MarketDataProperties properties;
     private final Clock clock;
+    private final MarketQuoteSnapshotStore snapshots;
     private final Map<String, Entry> cache = new LinkedHashMap<>(16, 0.75f, true);
     private Instant minute;
     private LocalDate day;
@@ -71,8 +74,9 @@ public class MarketQuoteService {
         requested.stream().map(s -> s.trim().toUpperCase(Locale.ROOT)).sorted().forEach(symbols::add);
         Map<String, QuoteResult> results = new LinkedHashMap<>();
         if (symbols.isEmpty()) return results;
-        var unavailable = !properties.isEnabled() ? DISABLED : !provider.isConfigured() ? UNAVAILABLE : null;
-        if (unavailable != null) { symbols.forEach(s -> results.put(s, new QuoteResult(null, unavailable, null))); return results; }
+        if (!properties.isEnabled()) {
+            symbols.forEach(s -> results.put(s, new QuoteResult(null, DISABLED, null))); return results;
+        }
         Instant now = clock.instant();
         Instant currentMinute = now.truncatedTo(ChronoUnit.MINUTES);
         LocalDate currentDay = LocalDate.ofInstant(now, ZoneOffset.UTC);
@@ -80,51 +84,64 @@ public class MarketQuoteService {
         if (!currentDay.equals(day)) { day = currentDay; dayCredits = 0; dayRequests = 0; }
         Duration ttl = bounded(properties.getCacheDuration(), 600, 60, 3600);
         Duration stale = bounded(properties.getStaleDuration(), 86400, ttl.toSeconds(), 172800);
-        if (!UsEquityMarketSession.isOpen(now)) {
-            Instant lastSessionOpen = UsEquityMarketSession.latestSessionOpen(now);
-            for (String symbol : symbols) {
-                if (!symbol.matches("[A-Z0-9][A-Z0-9.-]{0,19}")) {
-                    results.put(symbol, new QuoteResult(null, INVALID_SYMBOL, null));
-                    continue;
-                }
-                Entry entry = cache.get(symbol);
-                // Keep the most recent session's snapshot through nights/weekends/holidays.
-                // Do not change its timestamps or pretend it is the official closing price.
-                boolean lastSessionQuote = entry != null && entry.quote() != null
-                        && !entry.fetchedAt().isBefore(lastSessionOpen);
-                QuoteResult cached = lastSessionQuote
-                        ? new QuoteResult(entry.quote(), entry.failure() != null || !entry.fetchedAt().plus(ttl).isAfter(now)
-                            ? STALE : AVAILABLE, entry.fetchedAt())
-                        : entry == null ? new QuoteResult(null, UNAVAILABLE, null) : result(entry, now, ttl, stale);
-                results.put(symbol, cached);
-                if (entry == null) cacheMisses++; else cacheHits++;
-                if (cached.status() == STALE) staleCacheHits++;
-            }
-            LOGGER.debug("Market data skipped: regular US equity session closed; using cached quotes");
-            return results;
-        }
+        boolean marketOpen = UsEquityMarketSession.isOpen(now);
+        Duration persistedAge = Duration.ofDays(Math.clamp(properties.getPersistedMaxAgeDays(), 1, 365));
+        Duration memoryAge = marketOpen ? stale : persistedAge;
         long hitsBefore = cacheHits, missesBefore = cacheMisses;
         Set<String> misses = new LinkedHashSet<>();
         for (String symbol : symbols) {
             if (!symbol.matches("[A-Z0-9][A-Z0-9.-]{0,19}")) { results.put(symbol, new QuoteResult(null, INVALID_SYMBOL, null)); continue; }
             Entry entry = cache.get(symbol);
             boolean cachedOnly = policy == QuotePolicy.CACHE_ONLY;
-            boolean usableStale = entry != null && entry.quote() != null && entry.fetchedAt().plus(stale).isAfter(now);
-            if (entry != null && (cachedOnly || now.isBefore(entry.nextAttempt())
-                    || (usableStale && now.isBefore(entry.fetchedAt().plus(bounded(properties.getRefreshCooldown(), 120, 60, 3600))))
-                    || (policy == QuotePolicy.MISSING_ONLY && usableStale))) {
-                results.put(symbol, result(entry, now, ttl, stale));
+            boolean usableStale = usable(entry, now, entry != null && entry.origin() == QuoteOrigin.PERSISTED ? persistedAge : memoryAge);
+            // A closed-session quote must be refreshed once a new session opens, even if its TTL remains.
+            boolean currentSession = !marketOpen || (entry != null && entry.fetchedAt() != null
+                    && !entry.fetchedAt().isBefore(UsEquityMarketSession.latestSessionOpen(now)));
+            if (entry != null && ((!marketOpen && usableStale) || (cachedOnly && usableStale)
+                    || (now.isBefore(entry.nextAttempt()) && (entry.failure() != null || (entry.origin() == QuoteOrigin.PROVIDER && currentSession)))
+                    || (usableStale && entry.origin() == QuoteOrigin.PROVIDER && currentSession
+                        && now.isBefore(entry.fetchedAt().plus(bounded(properties.getRefreshCooldown(), 120, 60, 3600))))
+                    || (policy == QuotePolicy.MISSING_ONLY && usableStale && currentSession))) {
+                results.put(symbol, result(entry, now, ttl, entry.origin() == QuoteOrigin.PERSISTED ? persistedAge : memoryAge, marketOpen));
                 cacheHits++;
             } else {
                 cacheMisses++;
-                if (cachedOnly) results.put(symbol, new QuoteResult(null, UNAVAILABLE, null));
-                else misses.add(symbol);
+                misses.add(symbol);
             }
         }
+        // One batch DB lookup only for symbols not adequately resolved by memory.
+        if (!misses.isEmpty()) {
+            Map<String, MarketQuoteSnapshotStore.Snapshot> persisted = Map.of();
+            try { persisted = snapshots.load(Set.copyOf(misses)); }
+            catch (RuntimeException exception) { LOGGER.warn("Market quote snapshot lookup failed ({})", exception.getClass().getSimpleName()); }
+            for (String symbol : new LinkedHashSet<>(misses)) {
+                var saved = persisted.get(symbol);
+                if (saved != null && valid(symbol, saved.quote()) && saved.fetchedAt() != null
+                        && !saved.fetchedAt().isAfter(now) && saved.fetchedAt().plus(persistedAge).isAfter(now)) {
+                    Entry old = cache.get(symbol);
+                    if (old == null || old.quote() == null || !old.fetchedAt().isAfter(saved.fetchedAt())) {
+                        Instant next = old != null && old.failure() != null ? old.nextAttempt() : now;
+                        cache.put(symbol, new Entry(saved.quote(), old == null ? null : old.failure(), saved.fetchedAt(), next, QuoteOrigin.PERSISTED));
+                    }
+                    if (!marketOpen || policy == QuotePolicy.CACHE_ONLY || policy == QuotePolicy.MISSING_ONLY) {
+                        results.put(symbol, result(cache.get(symbol), now, ttl, persistedAge, marketOpen));
+                        misses.remove(symbol);
+                    }
+                }
+                if (policy == QuotePolicy.CACHE_ONLY && misses.remove(symbol)) {
+                    Entry old = cache.get(symbol);
+                    results.put(symbol, old == null ? new QuoteResult(null, UNAVAILABLE, null)
+                            : result(old, now, ttl, old.origin() == QuoteOrigin.PERSISTED ? persistedAge : memoryAge, marketOpen));
+                }
+            }
+        }
+        // Cache-only Insights/Gemini may read L2 but must never initiate external HTTP.
+        boolean configured = !misses.isEmpty() && provider.isConfigured();
         int dailyBudget = Math.clamp(properties.getCreditsPerDay(), 1, 1_000_000);
         int safeDailyBudget = dailyBudget - Math.clamp(properties.getDailyReserve(), 0, dailyBudget);
         int remaining = Math.max(0, Math.min(Math.clamp(properties.getCreditsPerMinute(), 1, 10000) - minuteCredits,
                 safeDailyBudget - dayCredits));
+        if (!configured) remaining = 0;
         boolean backingOff = backoffUntil != null && now.isBefore(backoffUntil);
         boolean requestBudgetReached = minuteRequests >= Math.clamp(properties.getMaxRequestsPerMinute(), 1, 10000)
                 || dayRequests >= Math.clamp(properties.getMaxRequestsPerDay(), 1, 1_000_000);
@@ -142,6 +159,7 @@ public class MarketQuoteService {
             if (fetched == null) fetched = Map.of();
         }
         Instant completed = clock.instant();
+        Map<String, MarketQuoteSnapshotStore.Snapshot> successful = new LinkedHashMap<>();
         var completedResults = fetched;
         // A provider-wide rejection/outage must also suppress requests for different symbols.
         if (!batch.isEmpty() && (fetched.values().stream().anyMatch(r -> r != null && r.status() == RATE_LIMITED)
@@ -150,32 +168,39 @@ public class MarketQuoteService {
             LOGGER.debug("Market data provider backoff activated");
         }
         for (String symbol : misses) {
-            var fetchedResult = batch.contains(symbol) ? fetched.get(symbol) : MarketDataProvider.Result.unavailable(RATE_LIMITED);
+            var fetchedResult = batch.contains(symbol) ? fetched.get(symbol) : MarketDataProvider.Result.unavailable(configured ? RATE_LIMITED : UNAVAILABLE);
             if (fetchedResult == null) fetchedResult = MarketDataProvider.Result.unavailable(UNAVAILABLE);
             Entry old = cache.get(symbol);
             Entry entry;
             var quote = fetchedResult.quote();
-            if (fetchedResult.status() == AVAILABLE && quote != null && symbol.equals(quote.symbol())
-                    && quote.currentPrice() != null && quote.currentPrice().signum() > 0 && "USD".equals(quote.currency())) {
+            if (fetchedResult.status() == AVAILABLE && valid(symbol, quote)) {
                 // Repeated identical market timestamps often mean last-close data. Recheck less often,
                 // but freshness/status still uses the normal TTL and original retrieval time.
                 boolean unchanged = old != null && old.quote() != null && quote.marketTimestamp() != null
+                        && old.origin() == QuoteOrigin.PROVIDER
+                        && (!marketOpen || !old.fetchedAt().isBefore(UsEquityMarketSession.latestSessionOpen(now)))
                         && quote.marketTimestamp().equals(old.quote().marketTimestamp())
                         && quote.currentPrice().compareTo(old.quote().currentPrice()) == 0;
                 Duration delay = unchanged ? bounded(properties.getUnchangedQuoteCacheDuration(), 1800, ttl.toSeconds(), 86400) : ttl;
-                entry = new Entry(quote, null, completed, completed.plus(delay));
+                entry = new Entry(quote, null, completed, completed.plus(delay), QuoteOrigin.PROVIDER);
+                successful.put(symbol, new MarketQuoteSnapshotStore.Snapshot(quote, completed));
             } else {
                 var failure = fetchedResult.status() == AVAILABLE ? UNAVAILABLE : fetchedResult.status();
-                boolean retain = old != null && old.quote() != null && old.fetchedAt().plus(stale).isAfter(completed)
+                boolean retain = usable(old, completed, old != null && old.origin() == QuoteOrigin.PERSISTED ? persistedAge : memoryAge)
                         && (failure == UNAVAILABLE || failure == RATE_LIMITED);
                 Instant nextAttempt = failure == RATE_LIMITED ? completed.plusSeconds(60)
                         : retain ? completed.plus(bounded(properties.getProviderBackoff(), 300, 60, 3600))
                         : completed.plus(bounded(properties.getNegativeCacheDuration(), 1800, 60, 86400));
                 if (backoffUntil != null && completed.isBefore(backoffUntil) && nextAttempt.isBefore(backoffUntil)) nextAttempt = backoffUntil;
-                entry = new Entry(retain ? old.quote() : null, failure, retain ? old.fetchedAt() : null, nextAttempt);
+                entry = new Entry(retain ? old.quote() : null, failure, retain ? old.fetchedAt() : null, nextAttempt,
+                        retain ? old.origin() : QuoteOrigin.PROVIDER);
             }
             cache.put(symbol, entry);
-            results.put(symbol, result(entry, completed, ttl, stale));
+            results.put(symbol, result(entry, completed, ttl, entry.origin() == QuoteOrigin.PERSISTED ? persistedAge : memoryAge, marketOpen));
+        }
+        if (!successful.isEmpty()) {
+            try { snapshots.save(successful, completed); }
+            catch (RuntimeException exception) { LOGGER.warn("Market quote snapshot persistence failed ({})", exception.getClass().getSimpleName()); }
         }
         int maximum = Math.clamp(properties.getMaxCacheSymbols(), 1, 10000);
         while (cache.size() > maximum) cache.remove(cache.keySet().iterator().next());
@@ -188,10 +213,21 @@ public class MarketQuoteService {
     private MarketDataProvider.Status fetchedStatus(MarketDataProvider.Result result) {
         return result == null ? UNAVAILABLE : result.status();
     }
-    private QuoteResult result(Entry entry, Instant now, Duration ttl, Duration stale) {
-        if (entry.quote() == null || !entry.fetchedAt().plus(stale).isAfter(now))
+    private boolean valid(String symbol, MarketQuote quote) {
+        return quote != null && symbol.equals(quote.symbol()) && quote.currentPrice() != null
+                && quote.currentPrice().signum() > 0 && quote.currentPrice().precision() <= 24
+                && quote.currentPrice().scale() <= 12 && "USD".equals(quote.currency());
+    }
+    private boolean usable(Entry entry, Instant now, Duration maximumAge) {
+        return entry != null && entry.quote() != null && entry.fetchedAt() != null
+                && !entry.fetchedAt().isAfter(now) && entry.fetchedAt().plus(maximumAge).isAfter(now);
+    }
+    private QuoteResult result(Entry entry, Instant now, Duration ttl, Duration stale, boolean marketOpen) {
+        if (!usable(entry, now, stale))
             return new QuoteResult(null, entry.failure() == null ? UNAVAILABLE : entry.failure(), null);
-        return new QuoteResult(entry.quote(), entry.failure() != null || !entry.fetchedAt().plus(ttl).isAfter(now) ? STALE : AVAILABLE, entry.fetchedAt());
+        return new QuoteResult(entry.quote(), !marketOpen || entry.origin() == QuoteOrigin.PERSISTED
+                || entry.fetchedAt().isBefore(UsEquityMarketSession.latestSessionOpen(now))
+                || entry.failure() != null || !entry.fetchedAt().plus(ttl).isAfter(now) ? STALE : AVAILABLE, entry.fetchedAt());
     }
     private Duration bounded(Duration value, long fallback, long min, long max) {
         return Duration.ofSeconds(Math.clamp(value == null ? fallback : value.toSeconds(), min, max));
