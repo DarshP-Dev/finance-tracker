@@ -8,6 +8,23 @@ import org.junit.jupiter.params.provider.CsvSource;
 class UsEquityMarketSessionTests {
     @ParameterizedTest
     @CsvSource({
+        "2026-10-09T19:59:59Z,2026-10-08,2026-10-08T20:00:00Z",
+        "2026-10-09T20:00:00Z,2026-10-09,2026-10-09T20:00:00Z",
+        "2026-10-11T16:00:00Z,2026-10-09,2026-10-09T20:00:00Z",
+        "2026-07-05T16:00:00Z,2026-07-02,2026-07-02T20:00:00Z",
+        "2026-11-26T16:00:00Z,2026-11-25,2026-11-25T21:00:00Z",
+        "2026-11-27T17:59:59Z,2026-11-25,2026-11-25T21:00:00Z",
+        "2026-11-27T18:00:00Z,2026-11-27,2026-11-27T18:00:00Z",
+        "2026-12-24T18:00:00Z,2026-12-24,2026-12-24T18:00:00Z",
+        "2026-01-05T14:00:00Z,2026-01-02,2026-01-02T21:00:00Z"
+    })
+    void latestCompletedSessionUsesActualHolidayEarlyCloseAndDstCalendar(String timestamp, String date, String close) {
+        var session = UsEquityMarketSession.latestCompletedSession(Instant.parse(timestamp));
+        assertThat(session.date()).hasToString(date);
+        assertThat(session.closesAt()).isEqualTo(Instant.parse(close));
+    }
+    @ParameterizedTest
+    @CsvSource({
         "2026-10-07T13:29:59Z,false", "2026-10-07T13:30:00Z,true",
         "2026-10-07T19:59:59Z,true", "2026-10-07T20:00:00Z,false",
         "2026-10-10T16:00:00Z,false", "2026-10-11T16:00:00Z,false",

@@ -3,6 +3,7 @@ package com.financetracker.backend.entities;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -21,6 +22,11 @@ public class MarketQuoteSnapshot {
     private BigDecimal previousClose;
     @Column(name = "market_timestamp")
     private Instant marketTimestamp;
+    @Column(name = "session_date")
+    private LocalDate sessionDate;
+    // Nullable for existing rows: legacy quotes were never confirmed as EOD prices.
+    @Column(name = "confirmed_close")
+    private Boolean confirmedClose;
     @Column(name = "fetched_at", nullable = false)
     private Instant fetchedAt;
     @Column(nullable = false, length = 32)

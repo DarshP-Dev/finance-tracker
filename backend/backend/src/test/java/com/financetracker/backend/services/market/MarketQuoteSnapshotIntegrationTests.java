@@ -69,6 +69,15 @@ class MarketQuoteSnapshotIntegrationTests {
             requested.forEach(s -> result.put(s, new MarketDataProvider.Result(quote(s, s.equals(a) ? "207.30" : "400"), MarketDataProvider.Status.AVAILABLE)));
             return result;
         });
+        when(provider.getClosingQuotes(anySet(), any())).thenAnswer(call -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            Set<String> requested = call.getArgument(0);
+            LocalDate session = call.getArgument(1);
+            Map<String, MarketDataProvider.Result> result = new LinkedHashMap<>();
+            requested.forEach(s -> result.put(s, new MarketDataProvider.Result(new MarketQuote(s,
+                    new BigDecimal(s.equals(a) ? "207.30" : "400"), "USD", null, null, session, true), MarketDataProvider.Status.AVAILABLE)));
+            return result;
+        });
     }
     @AfterEach void cleanup() {
         snapshots.deleteAllById(List.of(a, b, c));
@@ -126,6 +135,7 @@ class MarketQuoteSnapshotIntegrationTests {
         verify(provider).getQuotes(Set.of(a));
     }
     @Test void newlyConstructedResolverRecoversFromPostgresDuringWeekendWithZeroProviderCalls() {
+        clock.now = Instant.parse("2026-10-09T21:00:00Z");
         var original = quotes.getQuotes(Set.of(a)).get(a);
         clock.now = Instant.parse("2026-10-11T16:00:00Z");
         clearInvocations(provider);
@@ -134,11 +144,14 @@ class MarketQuoteSnapshotIntegrationTests {
         assertThat(restored.quote().currentPrice()).isEqualByComparingTo(original.quote().currentPrice());
         assertThat(restored.fetchedAt()).isEqualTo(original.fetchedAt());
         assertThat(restored.status()).isEqualTo(MarketDataProvider.Status.STALE);
+        assertThat(restored.quote().confirmedClose()).isTrue();
+        assertThat(restored.quote().sessionDate()).isEqualTo(LocalDate.of(2026, 10, 9));
         restarted.refreshQuotes(Set.of(a)); restarted.getQuotes(Set.of(a));
         verifyNoInteractions(provider);
     }
     @Test void restartClosedPortfolioDashboardAndAnalyticsUseSamePersistentValuationAndOwnership() throws Exception {
         var before = financialRows();
+        clock.now = Instant.parse("2026-10-09T21:00:00Z");
         var first = mapper.readTree(call(owner, "/api/investments/portfolio").body());
         clearMemory(); clearInvocations(provider);
         clock.now = Instant.parse("2026-10-09T22:00:00Z");
@@ -148,6 +161,8 @@ class MarketQuoteSnapshotIntegrationTests {
         assertThat(restored.path("summary").path("totalReturnPercentage").decimalValue()).isEqualByComparingTo("8.70");
         assertThat(restored.path("summary").path("lastUpdated")).isEqualTo(first.path("summary").path("lastUpdated"));
         assertThat(restored.path("summary").path("status").asText()).isEqualTo("STALE");
+        assertThat(restored.path("holdings").get(0).path("confirmedClose").asBoolean()).isTrue();
+        assertThat(restored.path("holdings").get(0).path("marketSessionDate").asText()).isEqualTo("2026-10-09");
         assertThat(restored.path("holdings").get(0).path("allocationPercentage").decimalValue()).isEqualByComparingTo("83.83");
         assertThat(mapper.readTree(call(owner, "/api/dashboard").body()).path("summary").path("investmentValue").decimalValue()).isEqualByComparingTo("2473");
         assertThat(mapper.readTree(call(owner, "/api/analytics").body()).path("portfolio").path("summary").path("totalMarketValue").decimalValue()).isEqualByComparingTo("2473");
@@ -163,7 +178,7 @@ class MarketQuoteSnapshotIntegrationTests {
         assertThat(mapper.readTree(call(owner, "/api/investments/portfolio").body()).path("summary").path("status").asText()).isEqualTo("STALE");
         clearMemory();
         for (int attempt = 0; attempt < 3; attempt++) call(owner, "/api/investments/portfolio");
-        verify(provider, times(1)).getQuotes(Set.of(a, b));
+        verify(provider, times(1)).getClosingQuotes(Set.of(a, b), LocalDate.of(2026, 10, 9));
         assertThat(snapshots.findAllBySymbolIn(List.of(a, b))).hasSize(2);
     }
     @Test void nextOpenRefreshesPersistedPriorSessionDataAndUpdatesPostgres() {
@@ -186,6 +201,7 @@ class MarketQuoteSnapshotIntegrationTests {
     @Test void tooOldPersistentSnapshotDoesNotBecomeFinancialInsightOrFakeZeroValuation() throws Exception {
         quotes.getQuotes(Set.of(a, b)); clearMemory(); clock.advance(8 * 86400);
         when(provider.getQuotes(anySet())).thenThrow(new IllegalStateException());
+        when(provider.getClosingQuotes(anySet(), any())).thenThrow(new IllegalStateException());
         var response = mapper.readTree(call(owner, "/api/investments/portfolio").body());
         assertThat(response.path("summary").path("totalMarketValue").isNull()).isTrue();
         assertThat(call(owner, "/api/financial-insights").body()).doesNotContain("investment-performance");
@@ -209,6 +225,51 @@ class MarketQuoteSnapshotIntegrationTests {
         verifyNoInteractions(provider);
     }
 
+    @Test void recentlyFetchedOlderMarketDataCannotOverwriteNewerPostgresQuote() {
+        quotes.getQuotes(Set.of(a));
+        Instant original = clock.instant();
+        clock.advance(600);
+        var old = new MarketQuote(a, BigDecimal.ONE, "USD", null, original.minusSeconds(86400));
+        store.save(Map.of(a, new MarketQuoteSnapshotStore.Snapshot(old, clock.instant())), clock.instant());
+        var saved = snapshots.findById(a).orElseThrow();
+        assertThat(saved.getPrice()).isEqualByComparingTo("207.30");
+        assertThat(saved.getFetchedAt()).isEqualTo(original);
+        assertThat(saved.getSessionDate()).isEqualTo(LocalDate.of(2026, 10, 9));
+        assertThat(saved.getConfirmedClose()).isFalse();
+    }
+    @Test void closingProvenanceOutranksSameSessionIntradayButNotNextSession() {
+        quotes.getQuotes(Set.of(a));
+        clock.now = Instant.parse("2026-10-09T21:00:00Z");
+        quotes.getQuotes(Set.of(a));
+        var closing = snapshots.findById(a).orElseThrow();
+        assertThat(closing.getConfirmedClose()).isTrue();
+        assertThat(closing.getMarketTimestamp()).isNull();
+        clock.advance(60);
+        store.save(Map.of(a, new MarketQuoteSnapshotStore.Snapshot(quote(a, "1"), clock.instant())), clock.instant());
+        assertThat(snapshots.findById(a).orElseThrow().getPrice()).isEqualByComparingTo("207.30");
+        clock.now = Instant.parse("2026-10-12T14:00:00Z");
+        store.save(Map.of(a, new MarketQuoteSnapshotStore.Snapshot(quote(a, "210"), clock.instant())), clock.instant());
+        assertThat(snapshots.findById(a).orElseThrow().getPrice()).isEqualByComparingTo("210");
+        assertThat(snapshots.findById(a).orElseThrow().getConfirmedClose()).isFalse();
+    }
+    @Test void legacyRowsAreNotSilentlyClassifiedAsConfirmedClosingPrices() {
+        quotes.getQuotes(Set.of(a));
+        jdbc.update("update market_quote_snapshots set session_date=null, confirmed_close=null where symbol=?", a);
+        clearMemory(); clearInvocations(provider);
+        clock.now = Instant.parse("2026-10-09T22:00:00Z");
+        var result = quotes.getQuotes(Set.of(a)).get(a);
+        assertThat(result.quote().confirmedClose()).isTrue();
+        verify(provider).getClosingQuotes(Set.of(a), LocalDate.of(2026, 10, 9));
+        assertThat(snapshots.findById(a).orElseThrow().getConfirmedClose()).isTrue();
+    }
+    @Test void disabledProviderRecoversPersistedValuationWithoutExternalCalls() throws Exception {
+        quotes.getQuotes(Set.of(a, b)); clearMemory(); clearInvocations(provider);
+        properties.setEnabled(false);
+        var response = mapper.readTree(call(owner, "/api/investments/portfolio").body());
+        assertThat(response.path("summary").path("totalMarketValue").decimalValue()).isEqualByComparingTo("2473");
+        assertThat(response.path("summary").path("status").asText()).isEqualTo("STALE");
+        verifyNoInteractions(provider);
+    }
     private MarketQuote quote(String symbol, String price) {
         return new MarketQuote(symbol, new BigDecimal(price), "USD", new BigDecimal("200"), clock.instant().minusSeconds(30));
     }

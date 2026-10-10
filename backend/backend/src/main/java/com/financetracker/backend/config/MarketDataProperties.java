@@ -15,6 +15,8 @@ public class MarketDataProperties {
     private String provider = "twelve-data";
     private String apiKey = "";
     private String endpoint = "https://api.twelvedata.com/quote";
+    private String eodEndpoint = "https://api.twelvedata.com/eod";
+    private Duration closePublicationDelay = Duration.ofMinutes(15);
     private Duration cacheDuration = Duration.ofMinutes(10);
     private Duration staleDuration = Duration.ofHours(24);
     private int persistedMaxAgeDays = 7;

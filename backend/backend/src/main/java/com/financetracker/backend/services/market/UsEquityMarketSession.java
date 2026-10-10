@@ -8,6 +8,17 @@ import java.time.temporal.TemporalAdjusters;
 final class UsEquityMarketSession {
     private static final ZoneId EASTERN = ZoneId.of("America/New_York");
     private static final LocalTime OPEN = LocalTime.of(9, 30);
+    record Session(LocalDate date, Instant opensAt, Instant closesAt) {}
+
+    static LocalDate easternDate(Instant now) { return now.atZone(EASTERN).toLocalDate(); }
+
+    static Session latestCompletedSession(Instant now) {
+        LocalDate date = easternDate(now);
+        while (!tradingDay(date) || now.isBefore(date.atTime(close(date)).atZone(EASTERN).toInstant()))
+            date = date.minusDays(1);
+        return new Session(date, date.atTime(OPEN).atZone(EASTERN).toInstant(),
+                date.atTime(close(date)).atZone(EASTERN).toInstant());
+    }
 
     static boolean isOpen(Instant now) {
         var local = now.atZone(EASTERN);

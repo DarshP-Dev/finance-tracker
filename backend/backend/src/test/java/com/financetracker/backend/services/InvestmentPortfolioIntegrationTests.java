@@ -100,13 +100,22 @@ class InvestmentPortfolioIntegrationTests {
         request(owner, "/api/investments/portfolio", "GET", null);
         verify(provider, times(1)).getQuotes(Set.of("AAPL", "MSFT"));
     }
-    @Test void closedMarketPortfolioRefreshAndOtherPagesReuseSnapshotWithoutProviderCallsOrWrites() throws Exception {
+    @Test void closedMarketFetchesDatedCloseOnceThenOtherPagesReuseWithoutPurchaseWrites() throws Exception {
+        when(provider.getClosingQuotes(anySet(), any())).thenAnswer(call -> {
+            Set<String> symbols = call.getArgument(0);
+            LocalDate session = call.getArgument(1);
+            Map<String, MarketDataProvider.Result> prices = new LinkedHashMap<>();
+            symbols.forEach(s -> prices.put(s, new MarketDataProvider.Result(new MarketQuote(s,
+                    new BigDecimal(s.equals("AAPL") ? "207.3" : "400"), "USD", null, null, session, true), MarketDataProvider.Status.AVAILABLE)));
+            return prices;
+        });
         var before = snapshot();
         var first = mapper.readTree(request(owner, "/api/investments/portfolio", "GET", null).body());
         clock.now = Instant.parse("2026-10-15T22:00:00Z");
         var closed = mapper.readTree(request(owner, "/api/investments/portfolio", "GET", null).body());
         assertThat(closed.path("summary").path("totalMarketValue")).isEqualTo(first.path("summary").path("totalMarketValue"));
-        assertThat(closed.path("summary").path("lastUpdated")).isEqualTo(first.path("summary").path("lastUpdated"));
+        assertThat(closed.path("summary").path("lastUpdated").asText()).isEqualTo(clock.instant().toString());
+        assertThat(closed.path("holdings").get(0).path("confirmedClose").asBoolean()).isTrue();
         assertThat(closed.path("summary").path("status").asText()).isEqualTo("STALE");
         assertThat(request(owner, "/api/investments/portfolio/refresh", "POST", null).statusCode()).isEqualTo(200);
         assertThat(request(owner, "/api/dashboard", "GET", null).statusCode()).isEqualTo(200);
@@ -115,7 +124,8 @@ class InvestmentPortfolioIntegrationTests {
         assertThat(coldOther.path("summary").path("status").asText()).isEqualTo("STALE");
         assertThat(coldOther.toString()).doesNotContain("AAPL", "MSFT");
         verify(provider, times(1)).getQuotes(Set.of("AAPL", "MSFT"));
-        verify(provider, times(1)).getQuotes(Set.of("OTHER"));
+        verify(provider).getClosingQuotes(Set.of("AAPL", "MSFT"), LocalDate.of(2026, 10, 15));
+        verify(provider).getClosingQuotes(Set.of("OTHER"), LocalDate.of(2026, 10, 15));
         assertThat(snapshot()).isEqualTo(before);
     }
     @Test void jwtAuthenticationAndUserIsolationAreEnforced() throws Exception {

@@ -11,7 +11,8 @@ export function signedMoney(value: number | null | undefined) {
 export function signedReturn(value: number | null | undefined) {
   return value == null ? "Unavailable" : `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
-export function priceStatus(status: Portfolio["holdings"][number]["quoteStatus"]) {
+export function priceStatus(status: Portfolio["holdings"][number]["quoteStatus"], closingSession?: string | null) {
+  if (closingSession) return `Closing price for ${quoteSessionDate(closingSession)}`;
   switch (status) {
     case "AVAILABLE": return "Latest available quote";
     case "STALE": return "Last known market price";
@@ -26,6 +27,9 @@ export function priceStatus(status: Portfolio["holdings"][number]["quoteStatus"]
 export function quoteTime(value: string | null | undefined) {
   return value ? new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : null;
 }
+export function quoteSessionDate(value: string) {
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`));
+}
 
 export function PortfolioOverview({ portfolio, allocation = false }: { portfolio: Portfolio | null | undefined; allocation?: boolean }) {
   if (!portfolio) return <p className="rounded-xl border border-[#e4e0e7] bg-white p-5 text-sm text-[#77717d]">Portfolio quotes could not be loaded. Your purchase records remain available.</p>;
@@ -33,6 +37,8 @@ export function PortfolioOverview({ portfolio, allocation = false }: { portfolio
   const complete = summary.totalMarketValue != null;
   const colors = ["#ff5a1f", "#12b76a", "#f79009", "#6d5e68", "#15151b", "#f7b993"];
   const available = portfolio.holdings.filter((h) => h.allocationPercentage != null);
+  const closingSession = portfolio.holdings[0]?.marketSessionDate;
+  const allClosing = closingSession && portfolio.holdings.every((h) => h.confirmedClose && h.marketSessionDate === closingSession);
   return <section aria-label="Current portfolio" className="min-w-0 rounded-2xl border border-[#e4e0e7] bg-white p-5 shadow-sm">
     <h2 className="text-lg font-semibold text-[#151515]">Current portfolio</h2>
     <p className="mt-1 text-sm leading-6 text-[#77717d]">All tracked holdings · USD · latest available provider prices, which may be delayed or the last close.</p>
@@ -43,7 +49,7 @@ export function PortfolioOverview({ portfolio, allocation = false }: { portfolio
       <Value label="Return on recorded cost" value={signedReturn(summary.totalReturnPercentage)} tone={summary.totalReturnPercentage} />
     </dl>
     <p role="status" className="mt-4 text-xs leading-5 text-[#77717d]">
-      {summary.status === "EMPTY" ? "No holdings recorded yet." : summary.status === "STALE" ? "Last known market prices: the market may be closed or a fresh quote unavailable. Values retain their original retrieval time." : summary.status === "PARTIAL" ? `Prices are available for ${summary.quotedHoldingCount} of ${summary.holdingCount} holdings. Complete portfolio totals and allocation are unavailable.` : summary.status === "DISABLED" ? "Market data is disabled. Recorded cost remains available." : summary.status === "UNAVAILABLE" ? "Market prices are unavailable. Recorded cost remains available." : "Latest available prices; values are unrealized, not realized profit."}
+      {summary.status === "EMPTY" ? "No holdings recorded yet." : allClosing ? `Provider closing prices for ${quoteSessionDate(closingSession)}. These are dated closing values, not live prices.` : summary.status === "STALE" ? "Last known market prices: a current intraday quote or the latest session's closing price is not confirmed. Values retain their original retrieval time." : summary.status === "PARTIAL" ? `Prices are available for ${summary.quotedHoldingCount} of ${summary.holdingCount} holdings. Complete portfolio totals and allocation are unavailable.` : summary.status === "DISABLED" ? "Market data is disabled. Recorded cost remains available." : summary.status === "UNAVAILABLE" ? "Market prices are unavailable. Recorded cost remains available." : "Latest available prices; values are unrealized, not realized profit."}
       {summary.lastUpdated && ` Retrieved ${quoteTime(summary.lastUpdated)}.`}
     </p>
     {allocation && <div className="mt-6 border-t border-[#eeeaf1] pt-5">

@@ -100,7 +100,7 @@ is always resolved from JWT authentication; no frontend user ID selects holdings
 
 `InvestmentPortfolioService` reads aggregated lots, finishes the database read,
 then uses `MarketQuoteService` and the `MarketDataProvider` abstraction. The
-`TwelveDataMarketDataProvider` implementation batches unique tickers via `/quote`,
+`TwelveDataMarketDataProvider` implementation batches unique tickers via `/quote` during the regular session and dated `/eod` requests after close,
 mapping `close`, currency, optional previous close, and provider timestamp into an
 internal `MarketQuote`. Authorization uses a backend-only header; the key never
 appears in browser code, API responses, logs, or provider URLs.
@@ -141,22 +141,22 @@ Its [current Basic plan](https://twelvedata.com/pricing) lists 8 credits/minute 
 Basic is listed for internal non-display usage; check the provider's display-data
 entitlements for your intended deployment. Configure matching quotas if your plan
 differs. The app never polls prices or automatically retries a failed provider call.
-Quote HTTP refreshes are suppressed for usable cached/stored prices outside the **regular US equity session**
+Quote HTTP refreshes are suppressed for stored closing prices matching the latest completed session outside the **regular US equity session**
 (9:30 a.m.–4:00 p.m. America/New_York, with daylight saving time). A local calendar
 applies scheduled weekends, NYSE holidays, and 1:00 p.m. early closes; it makes no
 market-state API calls. The calendar follows [NYSE hours and holidays](https://www.nyse.com/trade/hours-calendars)
 and does not predict extraordinary exchange closures. This policy targets US
 equities/ETFs; foreign-market and extended-hours sessions are not supported.
 Manual refresh, Dashboard, Analytics, and new tickers obey the same resolution policy.
-During a closure, an acceptable last-known memory or PostgreSQL snapshot remains visible
-even across a holiday weekend, with its original timestamps and a `STALE` label.
-It is the last retrieved price, not a guaranteed closing price. Normal cache/quota rules
+During a closure, the latest session's validated provider EOD price remains visible
+even across a holiday weekend, with its original retrieval time, session date and a `STALE` (not live) label.
+Ordinary/older quotes remain fallback and cannot suppress an eligible closing-price request. Normal cache/quota rules
 resume on an on-demand request during the next open session; there is no timer
 that contacts the provider at opening. The Investments page loads once on entry
 and retains that response until navigation, an explicit refresh, or a purchase edit.
 The bounded L1 cache is in memory; a lazy PostgreSQL L2 snapshot survives backend restarts.
-Only symbols without any usable memory/persisted price are eligible for a guarded,
-batched provider fetch while closed. Successful quotes are immediately persisted.
+Symbols without a closing price for the latest completed session are eligible for a guarded,
+batched EOD request after the publication delay. Successful quotes are immediately persisted.
 Uncached symbols exceeding the guard remain rate limited until a later refresh.
 Limits/cache are process-local; multiple hosting instances share the provider's
 account quota but do not share this local guard. Unpriced negative lookups are cached
@@ -270,7 +270,7 @@ New optional settings (credentials and existing settings above remain unchanged)
 | `MARKET_DATA_REFRESH_COOLDOWN` | `120s` | Shared manual cooldown/minimum quote-refresh spacing, 60s–1h |
 | `MARKET_DATA_NEGATIVE_CACHE_DURATION` | `30m` | Unknown/unsupported/unavailable unpriced results, 1m–24h |
 | `MARKET_DATA_PROVIDER_BACKOFF` | `5m` | Provider-wide pause after 429/rate rejection or an all-unavailable batch, 1m–1h |
-| `MARKET_DATA_UNCHANGED_QUOTE_CACHE_DURATION` | `30m` | Recheck delay after identical non-null market timestamp **and** price, at least fresh TTL and at most 24h |
+| `MARKET_DATA_UNCHANGED_QUOTE_CACHE_DURATION` | `30m` | Compatibility setting for outdated-data/closed-session retry cooldown, at least fresh TTL and at most 24h |
 
 Negative results expire and may be retried on a later on-demand request; symbols
 are never permanently invalidated. Provider-wide backoff also covers different/new
@@ -278,12 +278,11 @@ symbols, so changing pages/tickers cannot hammer an already-rejecting provider.
 Application quota blocks are distinct from provider rejection and do not create a
 provider-wide pause. No response or error logs contain credentials/provider bodies.
 
-Identical quote timestamps and prices commonly indicate unchanged/last-close data.
-After observing that twice, retrieval delays the next check to 30 minutes by default;
-this is a simple observation-based optimization, not an exchange calendar. Status
-still becomes `STALE` after the ordinary fresh TTL and retains the actual retrieval
-and market timestamps. Changed quotes return to the normal TTL. Stale age never
-exceeds the applicable memory or persisted fallback window.
+An ordinary quote with a previous-session or unknown timestamp is `STALE` even if
+retrieved just now. Outdated data uses a 30-minute on-demand retry cooldown; closed-session
+failures use that same cooldown in addition to provider-wide backoff. Identical current-session
+quotes retain the ordinary 10-minute refresh TTL, since a daily bar's opening timestamp
+can remain unchanged while its price updates. No timer initiates a retry.
 
 `MarketQuoteService.usage()` provides internal numeric counters for batch attempts,
 requested symbols, cache hits/misses, stale hits, quota/cooldown/backoff blocks,
@@ -312,18 +311,21 @@ Gemini summary after enabling your configuration.
 `market_quote_snapshots` stores **one latest valid USD quote per normalized symbol**.
 The symbol is the primary key (and lookup index), not a user or holding identifier.
 Rows include decimal price/previous close, currency, optional provider market timestamp,
-actual `fetched_at`, provider source, and row creation/update timestamps. The existing
-Hibernate `ddl-auto=update` configuration creates this table; no separate migration
+actual `fetched_at`, `session_date`, `confirmed_close`, provider source, and row creation/update timestamps. The existing
+Hibernate `ddl-auto=update` configuration creates this table and adds the two nullable provenance columns; no separate migration
 framework or historical daily-price table is added. Each successful provider batch
-updates memory and atomically upserts PostgreSQL. Older retrievals cannot overwrite
-newer snapshots from another backend instance. Saving snapshots uses a short,
+updates memory and atomically upserts PostgreSQL. Session date, closing provenance and
+market timestamp outrank retrieval time: newly retrieved older data cannot overwrite
+newer snapshots from another backend instance. Retrieval time breaks ties only.
+Legacy rows with null provenance remain ordinary last-known quotes; no closing status is inferred or backfilled.
+Saving snapshots uses a short,
 independent transaction **after** provider HTTP; errors are logged without exception
 details, credentials, or provider bodies and leave successful memory quotes usable.
 
 Resolution is centralized in `MarketQuoteService`; all portfolio pages reuse it:
 
-1. **L1 memory:** reuse a fresh quote without a DB or provider lookup. Closed sessions
-   also reuse acceptable last-known memory quotes, retaining original timestamps.
+1. **L1 memory:** reuse a fresh current-session quote without a DB or provider lookup. Closed sessions
+   reuse closing quotes for the latest completed session, retaining original timestamps.
 2. **L2 PostgreSQL:** batch-load unresolved symbols lazily. No startup preload or
    query per ticker is needed. Persisted quotes warm memory but always carry `STALE`
    metadata; their retrieval time is never changed merely by reading them.
@@ -336,32 +338,50 @@ or quota-limited, never an indefinitely fresh intraday price. The next regular
 session also refreshes previous-session/pre-open quotes on demand. `CACHE_ONLY`
 never contacts the provider; `MISSING_ONLY` preserves acceptable stored prices.
 
-While **closed**, usable L1/L2 quotes require **zero** provider requests, including
-manual Refresh and navigation between Investments, Dashboard and Analytics. If
-neither layer has a usable quote, one guarded batch attempt is permitted for the
-missing symbols. Success immediately persists and warms L1, so later requests and
-backend restarts reuse it. Failures use the existing negative cache/backoff; there
-are no automatic retries. The same calendar policy covers nights, weekends,
-scheduled holidays and early-close afternoons. No 4 p.m. task, polling, WebSockets,
-or opening-time scheduler is involved.
+While **closed**, the calendar finds the latest completed trading session. Only
+`confirmed_close=true` with that exact `session_date` suppresses an EOD request.
+Wait **15 minutes** after its actual close (including 1 p.m. early closes), then
+batch eligible missing closing prices via `/eod?date=YYYY-MM-DD&prepost=false`.
+The provider's returned date must match the requested session to count as current;
+older EOD dates remain stale fallback, and missing/future/invalid dates are rejected.
+Success immediately persists and warms L1, so manual Refresh, navigation and backend
+restarts reuse the close without additional credits until another session completes.
+Ordinary quotes fetched at night never become confirmed closes. A failed/outdated
+attempt cools down for 30 minutes; subsequent requests may retry after that delay
+under existing quotas and backoff. There are no scheduled or automatic retries.
+No 4 p.m. task, polling, WebSockets, or opening-time scheduler is involved.
+
+Here `confirmed_close` records a validated, dated **provider EOD response**, retrieved
+after the publication delay. Twelve Data documents [preliminary and reconciled EOD prices](https://support.twelvedata.com/en/articles/12682324-end-of-day-eod-pricing-market-data),
+but `/eod` has no documented exchange-finalization flag or guaranteed publication time.
+This metadata does not independently certify official exchange reconciliation.
+Increase the publication delay if your provider data arrives later. Its [exchange coverage](https://twelvedata.com/exchanges?level=basic)
+currently lists United States EOD under Basic; actual account entitlement is not tested
+by automated tests. An entitlement rejection preserves eligible stale data and activates
+backoff/cooldown rather than calling another endpoint repeatedly.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `MARKET_DATA_PERSISTED_MAX_AGE_DAYS` | `7` | Maximum usable L2/closed-session quote retrieval age, bounded to 1–365 days |
+| `MARKET_DATA_PERSISTED_MAX_AGE_DAYS` | `7` | Maximum ordinary/older L2 fallback retrieval age, bounded to 1–365 days; not a closing-freshness rule |
+| `MARKET_DATA_EOD_ENDPOINT` | `https://api.twelvedata.com/eod` | Backend-controlled dated EOD endpoint; same private API key and guards |
+| `MARKET_DATA_CLOSE_PUBLICATION_DELAY` | `15m` | Wait after regular/early close, bounded to 0–2 hours |
 | `MARKET_DATA_CACHE_DURATION` | `10m` | Existing open-session L1 freshness setting; unchanged |
 | `MARKET_DATA_STALE_DURATION` | `24h` | Existing open-session L1 transient-failure window; unchanged |
 
-Age is measured from **original retrieval time**, not row update time or invented
-market timestamps. At the age boundary a stored quote becomes unusable; a guarded
-on-demand fetch may replace it, otherwise its price is unavailable (`null`, never
-zero). `MARKET_DATA_ENABLED=false` still disables market valuations entirely. When
-enabled, usable stored quotes can remain available even if the provider key is
-temporarily unconfigured. Existing backend-only key variables are unchanged.
+Fallback age is measured from **original retrieval time**, not row update time or
+invented market timestamps. A confirmed close for the latest completed session remains
+usable while closed regardless of that fallback-age threshold. Ordinary/older stored
+quotes expire at the threshold; a guarded on-demand fetch may replace them, otherwise
+price is unavailable (`null`, never zero). `MARKET_DATA_ENABLED=false` disables external
+requests but still permits eligible stored prices as clearly labelled stale fallback.
+Usable stored quotes also remain available when the provider key is temporarily
+unconfigured. Existing backend-only key variables are unchanged; no new secrets are needed.
 
 Dashboard and Analytics calculate the same market value, unrealized gain/loss,
 return and allocation using acceptable last-known quotes. The shared UI labels them
-**Last known market prices** and shows the original retrieval time; holding cards
-also retain the provider market timestamp when available. Financial Insights keeps
+**Last known market prices** or **Closing price for [session date]** and shows the original retrieval time; holding cards
+also retain the provider market timestamp when available. New holding response fields
+are `marketSessionDate` and `confirmedClose`. Financial Insights keeps
 its stricter **complete, fresh portfolio only** performance rule: persisted/stale
 quotes retain recorded-cost insights instead. Gemini receives only those canonical
 insights and can never fetch quotes or receive raw snapshot tables.
@@ -375,9 +395,10 @@ Tests use fake providers and synthetic symbols, including real PostgreSQL/JWT/HT
 coverage of upserts, uniqueness, concurrent writes, memory loss, closed sessions,
 cross-page valuations, age limits and user ownership. No real Twelve Data or Gemini
 credits are consumed. To verify with your own data, load Investments while open,
-restart the backend while closed, then open Investments/Dashboard/Analytics and
-check retained values/timestamps with no provider batch in the debug logs. A ticker
-without a saved quote can fetch once subject to quota; next open-session requests
+load again after the publication delay to save the latest EOD close, restart the backend
+while closed, then open Investments/Dashboard/Analytics and check retained session dates
+and values with no additional provider batch in the debug logs. A ticker without the
+latest saved close can fetch once subject to quota; next open-session requests
 resume normal refreshes. Keep private API keys in ignored backend configuration.
 
 ## Financial Insights Phase 1

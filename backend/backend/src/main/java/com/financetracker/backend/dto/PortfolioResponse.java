@@ -3,6 +3,7 @@ package com.financetracker.backend.dto;
 import com.financetracker.backend.services.market.MarketDataProvider.Status;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 public record PortfolioResponse(Summary summary, List<Holding> holdings) {
@@ -14,5 +15,5 @@ public record PortfolioResponse(Summary summary, List<Holding> holdings) {
                           BigDecimal totalInvested, long purchaseCount, BigDecimal currentPrice,
                           BigDecimal marketValue, BigDecimal gainLoss, BigDecimal returnPercentage,
                           BigDecimal allocationPercentage, String currency, Status quoteStatus,
-                          Instant lastUpdated, Instant marketTimestamp) {}
+                          Instant lastUpdated, Instant marketTimestamp, LocalDate marketSessionDate, boolean confirmedClose) {}
 }

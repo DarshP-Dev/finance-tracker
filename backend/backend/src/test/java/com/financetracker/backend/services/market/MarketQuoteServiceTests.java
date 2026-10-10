@@ -10,7 +10,11 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
+@ExtendWith(OutputCaptureExtension.class)
 class MarketQuoteServiceTests {
     private final MarketDataProvider provider = mock(MarketDataProvider.class);
     private final MarketQuoteSnapshotStore snapshots = mock(MarketQuoteSnapshotStore.class);
@@ -24,6 +28,14 @@ class MarketQuoteServiceTests {
             Set<String> symbols = call.getArgument(0);
             Map<String, MarketDataProvider.Result> result = new LinkedHashMap<>();
             symbols.forEach(s -> result.put(s, new MarketDataProvider.Result(new MarketQuote(s, new BigDecimal("100"), "USD", null, clock.instant()), AVAILABLE)));
+            return result;
+        });
+        when(provider.getClosingQuotes(anySet(), any())).thenAnswer(call -> {
+            Set<String> symbols = call.getArgument(0);
+            LocalDate session = call.getArgument(1);
+            Map<String, MarketDataProvider.Result> result = new LinkedHashMap<>();
+            symbols.forEach(s -> result.put(s, new MarketDataProvider.Result(
+                    new MarketQuote(s, new BigDecimal("100"), "USD", null, null, session, true), AVAILABLE)));
             return result;
         });
         service = new MarketQuoteService(provider, properties, clock, snapshots);
@@ -258,18 +270,18 @@ class MarketQuoteServiceTests {
         assertThat(result.fetchedAt()).isEqualTo(first.fetchedAt());
         verify(provider, times(1)).getQuotes(anySet());
     }
-    @Test void unchangedMarketTimestampAndPriceDelayLowValueRefreshes() {
+    @Test void identicalCurrentSessionBarsStillRefreshAfterTenMinuteCacheExpires() {
         var quote = new MarketQuote("AAPL", new BigDecimal("100"), "USD", null, clock.instant());
         when(provider.getQuotes(anySet())).thenReturn(Map.of("AAPL", new MarketDataProvider.Result(quote, AVAILABLE)));
         service.getQuotes(Set.of("AAPL"));
         clock.advance(600);
         service.getQuotes(Set.of("AAPL"));
         clock.advance(600);
-        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(STALE);
-        verify(provider, times(2)).getQuotes(anySet());
+        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(AVAILABLE);
+        verify(provider, times(3)).getQuotes(anySet());
         clock.advance(1200);
         service.getQuotes(Set.of("AAPL"));
-        verify(provider, times(3)).getQuotes(anySet());
+        verify(provider, times(4)).getQuotes(anySet());
     }
     @Test void usageCountersTrackBatchesAndCacheSavingsWithoutPrivateData() {
         service.getQuotes(Set.of("AAPL", "MSFT"));
@@ -291,11 +303,11 @@ class MarketQuoteServiceTests {
         for (var policy : MarketQuoteService.QuotePolicy.values())
             assertThat(service.getQuotes(Set.of("AAPL"), policy).get("AAPL").status()).isEqualTo(STALE);
         assertThat(service.refreshQuotes(Set.of("AAPL")).quotes().get("AAPL").quote()).isNotNull();
-        verify(provider, times(1)).getQuotes(Set.of("AAPL"));
+        verify(provider, times(1)).getClosingQuotes(Set.of("AAPL"), LocalDate.of(2026, 10, 7));
         verify(snapshots).save(anyMap(), eq(clock.instant()));
     }
     @Test void weekendKeepsLastSessionSnapshotWithoutChangingTimestampsOrConsumingCredits() {
-        clock.now = Instant.parse("2026-10-09T19:00:00Z");
+        clock.now = Instant.parse("2026-10-09T21:00:00Z");
         var first = service.getQuotes(Set.of("AAPL")).get("AAPL");
         clock.now = Instant.parse("2026-10-11T20:00:00Z");
         var weekend = service.getQuotes(Set.of("AAPL")).get("AAPL");
@@ -303,36 +315,41 @@ class MarketQuoteServiceTests {
         assertThat(weekend.fetchedAt()).isEqualTo(first.fetchedAt());
         assertThat(weekend.status()).isEqualTo(STALE);
         service.refreshQuotes(Set.of("AAPL"));
-        verify(provider, times(1)).getQuotes(anySet());
+        verify(provider, times(1)).getClosingQuotes(anySet(), any());
         assertThat(service.usage().symbolsRequested()).isEqualTo(1);
         clock.now = Instant.parse("2026-10-12T13:30:00Z");
         assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(AVAILABLE);
-        verify(provider, times(2)).getQuotes(anySet());
+        verify(provider, times(1)).getQuotes(anySet());
     }
     @Test void afterCloseRepeatedReadsReuseOnePriceAndNextOpenRefreshes() {
         clock.now = Instant.parse("2026-10-07T19:59:00Z");
         var first = service.getQuotes(Set.of("AAPL")).get("AAPL");
         clock.now = Instant.parse("2026-10-07T23:00:00Z");
+        var closing = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        assertThat(closing.quote().currentPrice()).isEqualByComparingTo(first.quote().currentPrice());
+        assertThat(closing.quote().confirmedClose()).isTrue();
         for (int i = 0; i < 5; i++)
-            assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").quote()).isEqualTo(first.quote());
+            assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").quote()).isEqualTo(closing.quote());
+        verify(provider, times(1)).getClosingQuotes(anySet(), any());
         verify(provider, times(1)).getQuotes(anySet());
         clock.now = Instant.parse("2026-10-08T13:30:00Z");
         service.getQuotes(Set.of("AAPL"));
         verify(provider, times(2)).getQuotes(anySet());
     }
-    @Test void scheduledHolidayKeepsAcceptableLastKnownQuoteWithoutFetching() {
+    @Test void scheduledHolidayFetchesLatestCompletedSessionWhenStoredIntradayQuoteIsOlder() {
         clock.now = Instant.parse("2026-11-23T16:00:00Z");
         service.getQuotes(Set.of("AAPL"));
         clock.now = Instant.parse("2026-11-26T16:00:00Z");
         assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(STALE);
         verify(provider, times(1)).getQuotes(anySet());
+        verify(provider).getClosingQuotes(Set.of("AAPL"), LocalDate.of(2026, 11, 25));
     }
     @Test void holidayWeekendKeepsTheMostRecentTradingSessionSnapshot() {
-        clock.now = Instant.parse("2026-07-02T19:00:00Z");
+        clock.now = Instant.parse("2026-07-02T21:00:00Z");
         var first = service.getQuotes(Set.of("AAPL")).get("AAPL");
         clock.now = Instant.parse("2026-07-05T16:00:00Z");
         assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").fetchedAt()).isEqualTo(first.fetchedAt());
-        verify(provider, times(1)).getQuotes(anySet());
+        verify(provider, times(1)).getClosingQuotes(anySet(), any());
     }
     @Test void everySuccessfulBatchIsPersistedWithActualTimestamps() {
         service.getQuotes(Set.of("AAPL", "MSFT"));
@@ -352,7 +369,7 @@ class MarketQuoteServiceTests {
     @Test void closedRestartLoadsBatchSnapshotsAndWarmsMemoryWithoutChangingTimes() {
         var fetched = clock.instant();
         clock.now = Instant.parse("2026-10-07T22:00:00Z");
-        when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", fetched), "MSFT", saved("MSFT", fetched)));
+        when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", closingSaved("AAPL", fetched), "MSFT", closingSaved("MSFT", fetched)));
         var result = service.getQuotes(Set.of(" aapl ", "AAPL", "MSFT"));
         assertThat(result.get("AAPL").status()).isEqualTo(STALE);
         assertThat(result.get("AAPL").fetchedAt()).isEqualTo(fetched);
@@ -365,21 +382,21 @@ class MarketQuoteServiceTests {
     @Test void weekendHolidayAndEarlyCloseRestartsLoadLastKnownSnapshots() {
         for (String date : List.of("2026-10-11T16:00:00Z", "2026-11-26T16:00:00Z", "2026-11-27T19:00:00Z")) {
             clock.now = Instant.parse(date);
-            when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", clock.instant().minusSeconds(86400))));
+            when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", closingSaved("AAPL", clock.instant().minusSeconds(1800))));
             var restarted = new MarketQuoteService(provider, properties, clock, snapshots);
             assertThat(restarted.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(STALE);
         }
         verify(provider, never()).getQuotes(anySet());
     }
     @Test void closedPartialMemoryAndDatabaseFetchOnlyUniqueUnresolvedSymbols() {
-        service.getQuotes(Set.of("AAPL"));
         clock.now = Instant.parse("2026-10-07T22:00:00Z");
-        when(snapshots.load(anySet())).thenReturn(Map.of("MSFT", saved("MSFT", clock.instant().minusSeconds(3600)),
-                "VOO", saved("VOO", clock.instant().minusSeconds(3600))));
+        service.getQuotes(Set.of("AAPL"));
+        when(snapshots.load(anySet())).thenReturn(Map.of("MSFT", closingSaved("MSFT", clock.instant().minusSeconds(3600)),
+                "VOO", closingSaved("VOO", clock.instant().minusSeconds(3600))));
         service.getQuotes(Set.of("AAPL", "MSFT", "VOO", "NVDA", " nvda "));
         verify(snapshots).load(Set.of("MSFT", "VOO", "NVDA"));
-        verify(provider).getQuotes(Set.of("NVDA"));
-        verify(provider, times(2)).getQuotes(anySet());
+        verify(provider).getClosingQuotes(eq(Set.of("NVDA")), any());
+        verify(provider, times(2)).getClosingQuotes(anySet(), any());
     }
     @Test void openMarketRefreshesEvenRecentPersistedSnapshots() {
         when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", clock.instant().minusSeconds(60))));
@@ -399,27 +416,28 @@ class MarketQuoteServiceTests {
         assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(STALE);
         clock.advance(60);
         assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(AVAILABLE);
-        verify(provider, times(2)).getQuotes(anySet());
+        verify(provider, times(1)).getQuotes(anySet());
+        verify(provider, times(1)).getClosingQuotes(anySet(), any());
     }
     @Test void cacheOnlyNeverLabelsPreOpenQuoteAsFreshInNewSession() {
         clock.now = Instant.parse("2026-10-08T13:29:00Z");
         service.getQuotes(Set.of("AAPL"));
         clock.advance(60);
         assertThat(service.getQuotes(Set.of("AAPL"), MarketQuoteService.QuotePolicy.CACHE_ONLY).get("AAPL").status()).isEqualTo(STALE);
-        verify(provider, times(1)).getQuotes(anySet());
+        verify(provider, times(1)).getClosingQuotes(anySet(), any());
     }
     @Test void closedColdSymbolsStillObeyQuotaAndProviderWideBackoff() {
         clock.now = Instant.parse("2026-10-11T16:00:00Z");
         properties.setCreditsPerDay(1); properties.setDailyReserve(0);
         service.getQuotes(Set.of("AAPL", "MSFT"));
         assertThat(service.getQuotes(Set.of("MSFT")).get("MSFT").status()).isEqualTo(RATE_LIMITED);
-        verify(provider, times(1)).getQuotes(Set.of("AAPL"));
+        verify(provider, times(1)).getClosingQuotes(eq(Set.of("AAPL")), any());
         service = new MarketQuoteService(provider, properties, clock, snapshots);
         properties.setCreditsPerDay(800);
-        when(provider.getQuotes(anySet())).thenThrow(new IllegalStateException());
+        when(provider.getClosingQuotes(anySet(), any())).thenThrow(new IllegalStateException());
         service.getQuotes(Set.of("NVDA"));
         service.getQuotes(Set.of("VOO"));
-        verify(provider, never()).getQuotes(Set.of("VOO"));
+        verify(provider, never()).getClosingQuotes(eq(Set.of("VOO")), any());
         assertThat(service.usage().backoffBlocks()).isEqualTo(1);
     }
     @Test void providerFailureUsesPersistedFallbackOlderThanMemoryStaleAge() {
@@ -442,18 +460,18 @@ class MarketQuoteServiceTests {
         when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", clock.instant().minusSeconds(7 * 86400))));
         service.getQuotes(Set.of("AAPL"));
         service.getQuotes(Set.of("AAPL"));
-        verify(provider, times(1)).getQuotes(Set.of("AAPL"));
+        verify(provider, times(1)).getClosingQuotes(eq(Set.of("AAPL")), any());
         verify(snapshots).save(anyMap(), eq(clock.instant()));
     }
     @Test void configurablePersistentMaxAgeRejectsTooOldFallbackAndNeverReturnsZero() {
         properties.setPersistedMaxAgeDays(2);
         clock.now = Instant.parse("2026-10-11T16:00:00Z");
         when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", clock.instant().minusSeconds(3 * 86400))));
-        when(provider.getQuotes(anySet())).thenThrow(new IllegalStateException());
+        when(provider.getClosingQuotes(anySet(), any())).thenThrow(new IllegalStateException());
         assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").quote()).isNull();
         service.refreshQuotes(Set.of("AAPL"));
         service.getQuotes(Set.of("AAPL"));
-        verify(provider, times(1)).getQuotes(anySet());
+        verify(provider, times(1)).getClosingQuotes(anySet(), any());
     }
     @Test void cacheOnlyLoadsPersistentSnapshotsWithoutExternalCallsEvenDuringOpenSession() {
         when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", clock.instant().minusSeconds(60))));
@@ -496,9 +514,152 @@ class MarketQuoteServiceTests {
         clock.now = Instant.parse("2026-10-11T16:00:00Z");
         service.getQuotes(Set.of("AAPL"));
         clock.advance(7 * 86400);
-        when(provider.getQuotes(anySet())).thenThrow(new IllegalStateException());
+        when(provider.getClosingQuotes(anySet(), any())).thenThrow(new IllegalStateException());
         assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").quote()).isNull();
+        verify(provider, times(2)).getClosingQuotes(anySet(), any());
+    }
+    @Test void recentRetrievalOfPreviousSessionDoesNotSuppressLatestEodRequest() {
+        clock.now = Instant.parse("2026-10-09T23:12:00Z");
+        when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", Instant.parse("2026-10-09T04:13:00Z"))));
+        var result = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        assertThat(result.quote().sessionDate()).isEqualTo(LocalDate.of(2026, 10, 9));
+        assertThat(result.quote().confirmedClose()).isTrue();
+        verify(provider).getClosingQuotes(Set.of("AAPL"), LocalDate.of(2026, 10, 9));
+        verify(provider, never()).getQuotes(anySet());
+    }
+    @Test void regularAndEarlyClosesWaitForPublicationThenFetchOnlyOnce() {
+        for (String close : List.of("2026-10-09T20:00:00Z", "2026-11-27T18:00:00Z")) {
+            var resolver = new MarketQuoteService(provider, properties, clock, snapshots);
+            clock.now = Instant.parse(close);
+            clearInvocations(provider);
+            resolver.getQuotes(Set.of("AAPL"));
+            clock.advance(899);
+            resolver.getQuotes(Set.of("AAPL"));
+            verifyNoInteractions(provider);
+            clock.advance(1);
+            assertThat(resolver.getQuotes(Set.of("AAPL")).get("AAPL").quote().confirmedClose()).isTrue();
+            resolver.refreshQuotes(Set.of("AAPL"));
+            resolver.getQuotes(Set.of("AAPL"));
+            verify(provider, times(1)).getClosingQuotes(eq(Set.of("AAPL")), any());
+        }
+    }
+    @Test void unexpiredIntradayTtlCannotSuppressClosingRequestAfterPublicationDelay() {
+        properties.setCacheDuration(Duration.ofHours(1));
+        clock.now = Instant.parse("2026-10-09T19:59:00Z");
+        service.getQuotes(Set.of("AAPL"));
+        clock.now = Instant.parse("2026-10-09T20:15:00Z");
+        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").quote().confirmedClose()).isTrue();
+        verify(provider).getQuotes(Set.of("AAPL"));
+        verify(provider).getClosingQuotes(Set.of("AAPL"), LocalDate.of(2026, 10, 9));
+    }
+    @Test void latestConfirmedSessionRemainsUsableBeyondOrdinaryFallbackAge() {
+        properties.setPersistedMaxAgeDays(1);
+        clock.now = Instant.parse("2026-10-11T16:00:00Z");
+        var original = Instant.parse("2026-10-09T21:00:00Z");
+        when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", closingSaved("AAPL", original)));
+        var result = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        assertThat(result.quote().confirmedClose()).isTrue();
+        assertThat(result.fetchedAt()).isEqualTo(original);
+        service.getQuotes(Set.of("AAPL"));
+        verifyNoInteractions(provider);
+    }
+    @Test void staleClosingRetryCooldownCannotBlockNextOpenSession() {
+        clock.now = Instant.parse("2026-10-12T13:29:00Z");
+        when(provider.getClosingQuotes(anySet(), any())).thenReturn(Map.of("AAPL", new MarketDataProvider.Result(
+                new MarketQuote("AAPL", new BigDecimal("90"), "USD", null, null, LocalDate.of(2026, 10, 8), true), STALE)));
+        service.getQuotes(Set.of("AAPL"));
+        clock.now = Instant.parse("2026-10-12T13:30:00Z");
+        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(AVAILABLE);
+        verify(provider).getQuotes(Set.of("AAPL"));
+    }
+    @Test void outdatedEodResponseIsStaleAndUsesCooldownUntilLatestSessionArrives() {
+        clock.now = Instant.parse("2026-10-09T22:00:00Z");
+        var older = new MarketQuote("AAPL", new BigDecimal("90"), "USD", null, null, LocalDate.of(2026, 10, 8), true);
+        when(provider.getClosingQuotes(anySet(), any())).thenReturn(Map.of("AAPL", new MarketDataProvider.Result(older, STALE)));
+        var first = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        assertThat(first.status()).isEqualTo(STALE);
+        assertThat(first.quote().sessionDate()).isEqualTo(LocalDate.of(2026, 10, 8));
+        clock.advance(1799);
+        service.getQuotes(Set.of("AAPL")); service.refreshQuotes(Set.of("AAPL"));
+        verify(provider, times(1)).getClosingQuotes(anySet(), any());
+        clock.advance(1);
+        service.getQuotes(Set.of("AAPL"));
+        verify(provider, times(2)).getClosingQuotes(anySet(), any());
+    }
+    @Test void olderProviderDataCannotReplaceNewerFallbackOrItsRetrievalTime() {
+        service.getQuotes(Set.of("AAPL"));
+        Instant original = clock.instant();
+        clock.advance(600);
+        when(provider.getQuotes(anySet())).thenReturn(Map.of("AAPL", new MarketDataProvider.Result(
+                new MarketQuote("AAPL", new BigDecimal("90"), "USD", null, original.minusSeconds(86400)), AVAILABLE)));
+        var result = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        assertThat(result.status()).isEqualTo(STALE);
+        assertThat(result.quote().currentPrice()).isEqualByComparingTo("100");
+        assertThat(result.fetchedAt()).isEqualTo(original);
+        clock.advance(600);
+        service.getQuotes(Set.of("AAPL"));
         verify(provider, times(2)).getQuotes(anySet());
+        verify(snapshots, times(1)).save(anyMap(), any());
+    }
+    @Test void priorSessionTimestampNeverBecomesFreshFromRecentRetrieval() {
+        when(provider.getQuotes(anySet())).thenReturn(Map.of("AAPL", new MarketDataProvider.Result(
+                new MarketQuote("AAPL", new BigDecimal("90"), "USD", null, clock.instant().minusSeconds(86400)), AVAILABLE)));
+        assertThat(service.getQuotes(Set.of("AAPL")).get("AAPL").status()).isEqualTo(STALE);
+        clock.advance(600);
+        service.getQuotes(Set.of("AAPL"));
+        verify(provider, times(1)).getQuotes(anySet());
+    }
+    @Test void disabledProviderStillReturnsStoredFallbackAndNeverMakesHttpRequests() {
+        properties.setEnabled(false);
+        var original = clock.instant().minusSeconds(86400);
+        when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", original)));
+        var result = service.getQuotes(Set.of("AAPL")).get("AAPL");
+        assertThat(result.status()).isEqualTo(STALE);
+        assertThat(result.fetchedAt()).isEqualTo(original);
+        assertThat(result.quote().currentPrice()).isEqualByComparingTo("210.25");
+        verifyNoInteractions(provider);
+    }
+    @Test void concurrentClosedRequestsShareOneEodBatchAndCreditBudget() throws Exception {
+        clock.now = Instant.parse("2026-10-09T22:00:00Z");
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var requests = new ArrayList<java.util.concurrent.Future<Map<String, MarketQuoteService.QuoteResult>>>();
+            for (int i = 0; i < 10; i++) requests.add(executor.submit(() -> service.getQuotes(Set.of("AAPL", "MSFT"))));
+            for (var request : requests) assertThat(request.get().values()).allSatisfy(r -> assertThat(r.quote().confirmedClose()).isTrue());
+        }
+        verify(provider, times(1)).getClosingQuotes(eq(Set.of("AAPL", "MSFT")), any());
+        assertThat(service.usage().minuteCredits()).isEqualTo(2);
+    }
+    @Test void closingPricesAreRefetchedForNextCompletedSessionButNotDuringWeekend() {
+        clock.now = Instant.parse("2026-10-08T22:00:00Z");
+        service.getQuotes(Set.of("AAPL"));
+        clock.now = Instant.parse("2026-10-09T22:00:00Z");
+        service.getQuotes(Set.of("AAPL"));
+        clock.now = Instant.parse("2026-10-11T16:00:00Z");
+        service.getQuotes(Set.of("AAPL"));
+        verify(provider).getClosingQuotes(Set.of("AAPL"), LocalDate.of(2026, 10, 8));
+        verify(provider).getClosingQuotes(Set.of("AAPL"), LocalDate.of(2026, 10, 9));
+        verify(provider, times(2)).getClosingQuotes(anySet(), any());
+    }
+    @Test void missingProviderConfigurationLogsDecisionAndReturnsFallbackWithoutAttemptingEod(CapturedOutput output) {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(MarketQuoteService.class);
+        var previous = logger.getLevel();
+        logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        try {
+            clock.now = Instant.parse("2026-10-09T23:00:00Z");
+            when(provider.isConfigured()).thenReturn(false);
+            when(snapshots.load(anySet())).thenReturn(Map.of("AAPL", saved("AAPL", Instant.parse("2026-10-09T04:13:00Z"))));
+            var result = service.getQuotes(Set.of("AAPL")).get("AAPL");
+            assertThat(result.status()).isEqualTo(STALE);
+            assertThat(result.quote().confirmedClose()).isFalse();
+            assertThat(output.getAll()).contains("policy=ON_DEMAND", "enabled=true", "marketOpen=false", "eodSession=2026-10-09",
+                    "configured=false", "batch=0", "reason=UNCONFIGURED", "retained=true", "origin=PERSISTED");
+            verify(provider, never()).getClosingQuotes(anySet(), any());
+            verify(snapshots, never()).save(anyMap(), any());
+        } finally { logger.setLevel(previous); }
+    }
+    private MarketQuoteSnapshotStore.Snapshot closingSaved(String symbol, Instant fetchedAt) {
+        return new MarketQuoteSnapshotStore.Snapshot(new MarketQuote(symbol, new BigDecimal("210.25"), "USD", null, null,
+                UsEquityMarketSession.latestCompletedSession(clock.instant()).date(), true), fetchedAt);
     }
     private MarketQuoteSnapshotStore.Snapshot saved(String symbol, Instant fetchedAt) {
         return new MarketQuoteSnapshotStore.Snapshot(new MarketQuote(symbol, new BigDecimal("210.25"), "USD",

@@ -253,7 +253,7 @@ function HoldingCard({ holding }: { holding: InvestmentHolding }) {
         <Metric label="Unrealized Gain / Loss" value={signedMoney(holding.gainLoss)} tone={holding.gainLoss} />
         <Metric label="Return" value={signedReturn(holding.returnPercentage)} tone={holding.returnPercentage} />
       </dl>
-      <p className="mt-4 text-xs leading-5 text-[#77717d]">{priceStatus(holding.quoteStatus)}{holding.lastUpdated && ` · Retrieved ${quoteTime(holding.lastUpdated)}`}{holding.marketTimestamp && ` · Market timestamp ${quoteTime(holding.marketTimestamp)}`}</p>
+      <p className="mt-4 text-xs leading-5 text-[#77717d]">{priceStatus(holding.quoteStatus, holding.confirmedClose ? holding.marketSessionDate : null)}{holding.lastUpdated && ` · Retrieved ${quoteTime(holding.lastUpdated)}`}{holding.marketTimestamp && ` · Market timestamp ${quoteTime(holding.marketTimestamp)}`}</p>
     </article>
   );
 }

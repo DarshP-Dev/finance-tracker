@@ -67,7 +67,8 @@ public class InvestmentPortfolioService {
                     h.getPurchaseCount(), quote == null ? null : quote.currentPrice(), market, gain,
                     gain == null ? null : percent(gain, cost), null, "USD",
                     result == null ? Status.UNAVAILABLE : result.status(), result == null ? null : result.fetchedAt(),
-                    quote == null ? null : quote.marketTimestamp()));
+                    quote == null ? null : quote.marketTimestamp(), quote == null ? null : quote.sessionDate(),
+                    quote != null && quote.confirmedClose()));
         }
         boolean complete = quotedCount == stored.size();
         var status = stored.isEmpty() ? ValuationStatus.EMPTY : complete ? (stale ? ValuationStatus.STALE : ValuationStatus.AVAILABLE)
@@ -77,7 +78,7 @@ public class InvestmentPortfolioService {
             BigDecimal denominator = totalMarket;
             holdings.replaceAll(h -> new Holding(h.ticker(), h.totalShares(), h.averagePurchasePrice(), h.totalInvested(), h.purchaseCount(),
                     h.currentPrice(), h.marketValue(), h.gainLoss(), h.returnPercentage(), percent(h.marketValue(), denominator),
-                    h.currency(), h.quoteStatus(), h.lastUpdated(), h.marketTimestamp()));
+                    h.currency(), h.quoteStatus(), h.lastUpdated(), h.marketTimestamp(), h.marketSessionDate(), h.confirmedClose()));
         }
         BigDecimal gain = complete ? totalMarket.subtract(totalCost) : null;
         return new PortfolioResponse(new Summary(totalCost, complete ? totalMarket : null, gain,
