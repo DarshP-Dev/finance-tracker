@@ -12,6 +12,7 @@ import { SettingsPage } from "@/components/settings/SettingsPage";
 import { Button } from "@/components/ui/button";
 import { DateFilter } from "@/components/transactions/DateFilter";
 import { formatCurrency } from "@/components/transactions/formatters";
+import { useDarkMode } from "@/lib/useDarkMode";
 import { RecurringTransactionsView } from "@/components/transactions/RecurringTransactionsView";
 import { UpcomingRecurringView } from "@/components/transactions/UpcomingRecurringView";
 import { TransactionForm, type TransactionFormSubmission } from "@/components/transactions/TransactionForm";
@@ -45,7 +46,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeView = getAppView(pathname);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { isDarkMode, setIsDarkMode } = useDarkMode();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionTab, setTransactionTab] = useState<"transactions" | "recurring" | "upcoming">("transactions");
   const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);

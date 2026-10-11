@@ -305,6 +305,8 @@ function SettingToggle({ label, enabled, onToggle, icon }: SettingToggleProps) {
     <button
       type="button"
       onClick={onToggle}
+      role={onToggle ? "switch" : undefined}
+      aria-checked={onToggle ? enabled : undefined}
       className="flex items-center justify-between rounded-xl border border-[#eeeaf1] px-4 py-3 text-left transition hover:border-[#ff5a1f]"
     >
       <span className="flex items-center gap-2 text-sm font-semibold text-[#46404b]">
