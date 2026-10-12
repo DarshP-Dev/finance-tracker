@@ -52,8 +52,8 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
 
   return (
     <div className={isDarkMode ? "dark-shell min-h-screen bg-black p-4 text-[#ff8a3d] lg:p-5" : "min-h-screen bg-[#e7e5ea] p-4 text-[#151515] lg:p-5"}>
-      <div className={isDarkMode ? "mx-auto grid min-h-[calc(100vh-40px)] max-w-[1680px] overflow-hidden rounded-sm border border-[#2b292f] bg-[#17171a] lg:grid-cols-[220px_minmax(0,1fr)]" : "mx-auto grid min-h-[calc(100vh-40px)] max-w-[1680px] overflow-hidden rounded-sm border border-[#d8d5dc] bg-[#fbfbfc] lg:grid-cols-[220px_minmax(0,1fr)]"}>
-        <aside className={isDarkMode ? "hidden border-r border-[#2b292f] bg-[#1f1f23] px-4 py-5 lg:flex lg:flex-col" : "hidden border-r border-[#e5e1e8] bg-white px-4 py-5 lg:flex lg:flex-col"}>
+      <div className={isDarkMode ? "mx-auto grid min-h-[calc(100vh-40px)] max-w-[1680px] overflow-hidden rounded-sm border border-[#2b292f] bg-[#131316] lg:grid-cols-[220px_minmax(0,1fr)]" : "mx-auto grid min-h-[calc(100vh-40px)] max-w-[1680px] overflow-hidden rounded-sm border border-[#d8d5dc] bg-[#fbfbfc] lg:grid-cols-[220px_minmax(0,1fr)]"}>
+        <aside className={isDarkMode ? "hidden border-r border-[#2b292f] bg-[#1b1b1f] px-4 py-5 lg:flex lg:flex-col" : "hidden border-r border-[#e5e1e8] bg-white px-4 py-5 lg:flex lg:flex-col"}>
           <div className={isDarkMode ? "flex min-h-12 items-center gap-2 rounded-xl border border-[#343139] px-4" : "flex min-h-12 items-center gap-2 rounded-xl border border-[#e4e0e7] px-4"}>
             <Image
               src="/personal-finance-logo.png"
@@ -91,13 +91,13 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
           </div>
         </aside>
 
-        <section className={isDarkMode ? "min-w-0 bg-[#17171a] px-4 py-4 sm:px-6 lg:px-6" : "min-w-0 bg-[#fbfbfc] px-4 py-4 sm:px-6 lg:px-6"}>
+        <section className={isDarkMode ? "min-w-0 bg-[#131316] px-4 py-4 sm:px-6 lg:px-6" : "min-w-0 bg-[#fbfbfc] px-4 py-4 sm:px-6 lg:px-6"}>
           <header className={isDarkMode ? "flex flex-col gap-4 border-b border-[#2b292f] pb-4 lg:flex-row lg:items-center" : "flex flex-col gap-4 border-b border-[#e5e1e8] pb-4 lg:flex-row lg:items-center"}>
             <div className="relative flex w-full items-center justify-between gap-4 lg:w-auto lg:flex-none lg:justify-start">
               <button
                 type="button"
                 onClick={() => navigateTo("dashboard")}
-                className={isDarkMode ? "inline-flex h-10 items-center gap-2 rounded-xl border border-[#343139] bg-[#1f1f23] px-4 text-sm font-semibold text-[#ff8a68] transition hover:border-[#ff5a1f]" : "inline-flex h-10 items-center gap-2 rounded-xl border border-[#e4e0e7] bg-white px-4 text-sm font-semibold text-[#ff5a1f] transition hover:border-[#ff5a1f]"}
+                className={isDarkMode ? "inline-flex h-10 items-center gap-2 rounded-xl border border-[#343139] bg-[#1b1b1f] px-4 text-sm font-semibold text-[#ff8a68] transition hover:border-[#ff5a1f]" : "inline-flex h-10 items-center gap-2 rounded-xl border border-[#e4e0e7] bg-white px-4 text-sm font-semibold text-[#ff5a1f] transition hover:border-[#ff5a1f]"}
               >
                 <Home size={16} />
                 Home
@@ -115,7 +115,7 @@ export function DashboardHeader({ auth, activeView, isDarkMode, onViewChange, on
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col justify-end gap-3 sm:flex-row sm:items-center">
-              <div className={isDarkMode ? "relative flex h-10 min-w-0 flex-1 items-center rounded-xl border border-[#343139] bg-[#1f1f23] px-4" : "relative flex h-10 min-w-0 flex-1 items-center rounded-xl border border-[#ece8ef] bg-white px-4"}>
+              <div className={isDarkMode ? "relative flex h-10 min-w-0 flex-1 items-center rounded-xl border border-[#343139] bg-[#1b1b1f] px-4" : "relative flex h-10 min-w-0 flex-1 items-center rounded-xl border border-[#ece8ef] bg-white px-4"}>
                 <Search size={17} className="shrink-0 text-[#8d8792]" />
                 <input
                   type="search"

@@ -53,7 +53,7 @@ button:focus-visible, select:focus-visible {
 
 .dark-shell .bg-white,
 .dark-shell [class*="bg-white"] {
-  background-color: #252529 !important;
+  background-color: #202024 !important;
 }
 
 .dark-shell .bg-\[\#fbfbfc\],
@@ -70,7 +70,7 @@ button:focus-visible, select:focus-visible {
 .dark-shell .bg-\[\#f5f7fb\],
 .dark-shell .bg-\[\#edf8f1\],
 .dark-shell .bg-\[\#f4f1ff\] {
-  background-color: #252529 !important;
+  background-color: #202024 !important;
 }
 
 .dark-shell .text-\[\#151515\],
@@ -99,7 +99,7 @@ button:focus-visible, select:focus-visible {
 
 .dark-shell input,
 .dark-shell select {
-  background-color: #1b1b1f !important;
+  background-color: #17171b !important;
   border-color: #3b3740 !important;
   color: #f7f2ee !important;
 }
