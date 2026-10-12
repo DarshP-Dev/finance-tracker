@@ -2,6 +2,14 @@
 
 ## Safety and current readiness
 
+The separately prepared local repair and original pre-adoption investigation are
+in [Local schema reconciliation](local-schema-reconciliation.md). Subsequent
+read-only inspection confirms the operator has now adopted the local database
+with a successful **BASELINE 1**. See [the CLI validation fix](flyway-baseline-validation-fix.md).
+For that already-adopted local database, use `database.ps1 -Command validate`;
+do not repeat the adoption procedure below. The drift table records the original
+pre-reconciliation audit, not the current adopted-local state.
+
 Spring Boot **4.0.6** manages **Flyway 11.14.1**. The backend uses
 `spring-boot-starter-flyway` (Boot 4's Flyway auto-configuration module) and
 `flyway-database-postgresql`. Hibernate only validates. No entity, financial
@@ -64,6 +72,11 @@ clean fail at startup. `DB_DDL_AUTO` is obsolete; remove it from deployment sett
   checksums, reject missing/pending/unknown migrations, then Hibernate validates.
   No startup migrate/baseline/history creation. Use a runtime DB role without DDL
   permissions once permissions have been reviewed independently.
+
+  CLI `validate` and this startup mode share `DatabaseMigrationTool.validateHistory`.
+  V1 `BASELINE_IGNORED` is accepted only with genuine successful BASELINE 1 history
+  and matching Flyway info. Other unapplied/ignored/failed/unexpected states are
+  rejected even if Flyway validation itself succeeds.
 * Local `start-dev.ps1`: defaults to `migrate` only if the environment has no value;
   refuses nonlocal URLs. Flyway can initialize an empty schema and apply future
   migrations to an adopted schema. An unbaselined nonempty schema fails without
@@ -119,14 +132,16 @@ owners, grants and sequence current values. Those permissions and objects outsid
 constraint/index names and extension/version differences; review any mismatch.
 The manifest is an adoption artifact for V1, not a mutable current-schema description.
 
-## Local adoption: manual only, currently blocked by the differences above
+## Local adoption: manual only, for databases without migration history
 
 1. Stop backend writers/cron and DDL activity. Confirm the completed local backup
    is readable and test restoration into a separate disposable database. Preserve
    the schema export and backup timestamp. Do not assume a file's existence proves recovery.
 2. Review/reconcile the four reported local constraint differences through a
    **separately approved** change; recheck existing financial data first. Do not
-   baseline before verification succeeds. No reconciliation is included here.
+   baseline before verification succeeds. Use the separately reviewable scripts
+   and commands in [the reconciliation guide](local-schema-reconciliation.md);
+   they are outside the automatic Flyway migration path.
 3. Configure/confirm the intended local target. Existing encrypted password loading
    still works; do not paste passwords into shell history:
 
@@ -137,8 +152,8 @@ The manifest is an adoption artifact for V1, not a mutable current-schema descri
    .\database.ps1 -Command verify
    ```
 
-   With today's local schema this command **fails with the four differences** and
-   makes no changes. Failure is expected until separately approved reconciliation.
+   With the original unreconciled schema this command **fails with the four
+   differences** and makes no changes. Reconcile and reverify before first adoption.
 4. Only after a successful verify, backup verification and explicit approval:
 
    ```powershell

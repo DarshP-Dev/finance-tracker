@@ -1,5 +1,13 @@
 # Flyway implementation report
 
+Follow-up, October 12, 2026: the four local differences now have separately
+reviewable SQL and a successful disposable rehearsal in
+[Local schema reconciliation](local-schema-reconciliation.md). The full suite now
+passes **500 tests**. That follow-up also fixes validation-only startup accepting
+V1 after an explicit baseline. The actual local database remains unchanged and
+unbaselined. The original implementation report below is retained as historical
+context; its 475-test result predates this follow-up.
+
 ## A. Implementation summary
 
 Implemented safe schema ownership using Spring Boot 4.0.6's Flyway starter and

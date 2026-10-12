@@ -1,7 +1,6 @@
 package com.financetracker.backend.config;
 
 import com.financetracker.backend.migration.DatabaseMigrationTool;
-import java.util.Arrays;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
@@ -19,18 +18,18 @@ public class DatabaseMigrationConfiguration {
         return flyway -> {
             if (flyway.getConfiguration().isBaselineOnMigrate() || !flyway.getConfiguration().isCleanDisabled())
                 throw new IllegalStateException("Automatic baseline and Flyway clean are prohibited");
-            try (var connection = flyway.getConfiguration().getDataSource().getConnection()) {
-                connection.setReadOnly(true);
-                DatabaseMigrationTool.checkHistory(connection);
-                if (mode.equals("validate")) DatabaseMigrationTool.requireHistory(connection);
+            try {
+                if (mode.equals("migrate")) {
+                    try (var connection = flyway.getConfiguration().getDataSource().getConnection()) {
+                        connection.setReadOnly(true);
+                        DatabaseMigrationTool.checkHistory(connection);
+                    }
+                    flyway.migrate();
+                } else {
+                    DatabaseMigrationTool.validateHistory(flyway);
+                }
             } catch (java.sql.SQLException e) {
                 throw new IllegalStateException("Cannot check Flyway history", e);
-            }
-            if (mode.equals("migrate")) flyway.migrate();
-            else {
-                flyway.validate();
-                if (Arrays.stream(flyway.info().all()).anyMatch(m -> !m.getState().isApplied()))
-                    throw new IllegalStateException("Pending/unsupported database migrations. Apply them through the controlled migration tool before deployment.");
             }
         };
     }

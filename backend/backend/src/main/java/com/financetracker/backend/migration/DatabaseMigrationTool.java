@@ -5,6 +5,8 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Arrays;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationState;
+import org.flywaydb.core.api.MigrationVersion;
 
 /** Explicit operator tool; no Spring context, schedulers, financial writes or API clients. */
 public final class DatabaseMigrationTool {
@@ -41,10 +43,8 @@ public final class DatabaseMigrationTool {
                     System.out.println("Migrations applied and checksums validated.");
                 }
                 case "validate" -> {
-                    requireHistory(connection);
-                    flyway.validate();
-                    if (Arrays.stream(flyway.info().all()).anyMatch(m -> !m.getState().isApplied()))
-                        throw new IllegalStateException("Migration history is not fully applied");
+                    connection.setReadOnly(true);
+                    validateHistory(flyway);
                     System.out.println("Migration history and checksums validated. No database changes made.");
                 }
                 default -> throw new IllegalArgumentException("Unsupported command");
@@ -96,10 +96,40 @@ public final class DatabaseMigrationTool {
     public static void checkHistory(Connection connection) throws SQLException {
         if (!historyExists(connection)) return;
         try (var statement = connection.createStatement(); var rows = statement.executeQuery(
-                "select version from public.flyway_schema_history where type='BASELINE'")) {
-            while (rows.next()) if (!"1".equals(rows.getString(1)))
-                throw new IllegalStateException("Unsupported Flyway baseline version; expected 1. Do not repair history.");
+                "select version, success from public.flyway_schema_history where type='BASELINE'")) {
+            while (rows.next()) {
+                if (!"1".equals(rows.getString(1)))
+                    throw new IllegalStateException("Unsupported Flyway baseline version; expected 1. Do not repair history.");
+                if (!rows.getBoolean(2))
+                    throw new IllegalStateException("Flyway baseline history is not successful. Do not repair history.");
+            }
         }
+    }
+
+    /** Shared CLI/startup validation. No migrate, baseline, repair or financial writes. */
+    public static void validateHistory(Flyway flyway) throws SQLException {
+        boolean successfulBaseline;
+        try (var connection = flyway.getConfiguration().getDataSource().getConnection()) {
+            connection.setReadOnly(true);
+            requireHistory(connection);
+            try (var statement = connection.createStatement(); var rows = statement.executeQuery(
+                    "select exists (select 1 from public.flyway_schema_history where type='BASELINE' and version='1' and success)")) {
+                rows.next(); successfulBaseline = rows.getBoolean(1);
+            }
+        }
+        // Checksums, missing files, failed records and pending migrations must still be validated.
+        flyway.validate();
+        var migrations = flyway.info().all();
+        var versionOne = MigrationVersion.fromVersion("1");
+        boolean explicitlyBaselined = successfulBaseline && Arrays.stream(migrations).anyMatch(m ->
+                m.getState() == MigrationState.BASELINE && versionOne.equals(m.getVersion()));
+        var unexpected = Arrays.stream(migrations).filter(m ->
+                m.getState() != MigrationState.SUCCESS && m.getState() != MigrationState.BASELINE
+                && !(explicitlyBaselined && versionOne.equals(m.getVersion())
+                    && m.getState() == MigrationState.BASELINE_IGNORED)).toList();
+        if (!unexpected.isEmpty())
+            throw new IllegalStateException("Migration history is not fully applied: " + String.join(", ",
+                    unexpected.stream().map(m -> m.getVersion() + "=" + m.getState()).toList()));
     }
 
     private static String required(String name) {
