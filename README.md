@@ -21,10 +21,15 @@ The backend reads deployment configuration from environment variables:
 - `DB_PASSWORD` (required)
 - `JWT_SECRET` (required when the development script is not used)
 - `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3000`)
-- `DB_DDL_AUTO`, `JPA_SHOW_SQL`, and `JPA_FORMAT_SQL` (optional)
+- `DB_MIGRATION_MODE` (`validate` by default; local startup defaults to `migrate`)
+- `JPA_SHOW_SQL` and `JPA_FORMAT_SQL` (optional)
 
-Use separately managed secrets in production and set `DB_DDL_AUTO=validate` after
-introducing database migrations.
+Hibernate now uses `ddl-auto=validate`; Flyway owns schema changes. Existing
+populated databases require explicit verified adoption before startup. Remove
+obsolete `DB_DDL_AUTO=update` settings. See [database migrations and adoption](docs/database-migrations.md)
+for the local schema differences that currently block adoption, backup requirements,
+exact manual commands, production release ordering, and isolated PostgreSQL tests
+(`backend/backend/run-tests.ps1`). No actual local/Neon baseline is automatic.
 
 In a second terminal, start the frontend:
 
@@ -312,8 +317,9 @@ Gemini summary after enabling your configuration.
 The symbol is the primary key (and lookup index), not a user or holding identifier.
 Rows include decimal price/previous close, currency, optional provider market timestamp,
 actual `fetched_at`, `session_date`, `confirmed_close`, provider source, and row creation/update timestamps. The existing
-Hibernate `ddl-auto=update` configuration creates this table and adds the two nullable provenance columns; no separate migration
-framework or historical daily-price table is added. Each successful provider batch
+Flyway V1 creates this table, including the two nullable provenance columns, on
+fresh databases. Existing databases require explicit schema verification and baseline
+adoption; no historical daily-price table is added. Each successful provider batch
 updates memory and atomically upserts PostgreSQL. Session date, closing provenance and
 market timestamp outrank retrieval time: newly retrieved older data cannot overwrite
 newer snapshots from another backend instance. Retrieval time breaks ties only.
@@ -516,8 +522,9 @@ endpoint. Configure these variables in Vercel without committing their values:
 - `DB_USERNAME`: Neon database role
 - `DB_PASSWORD`: Neon database password
 - `JWT_SECRET`: stable random JWT signing secret of at least 32 bytes
-- `DB_DDL_AUTO`: use `update` for the initial beta deployment; move to `validate`
-  after adding managed database migrations
+- `DB_MIGRATION_MODE=validate`: controlled migrations run before deployment;
+  Vercel startup validates existing history and Hibernate mappings without DDL.
+  Verify backup/schema and explicitly adopt existing Neon before deploying this version.
 
 Vercel supplies `PORT`; the backend continues to use port 8080 when `PORT` is not
 set. The frontend uses same-origin `/api/...` requests in production and continues
@@ -628,8 +635,8 @@ Loading, empty, retry/error, keyboard dismissal, and mobile layouts are supporte
 Counts refresh on navigation, panel opening, notification actions, and successful
 transaction/budget/recurring mutations, with no polling or requests per item.
 
-The current Hibernate `ddl-auto=update` schema management creates `notifications`
-and `notification_receipts`; no migration tool is added. Notifications have an
+Flyway V1 creates `notifications` and `notification_receipts` on fresh databases;
+existing schemas require verified explicit adoption. Notifications have an
 owning user, type/severity, title/message, read flag, UTC creation timestamp,
 target path, and optional related ID. Indexes support user/read counts and newest
 first history (creation time, then ID descending). Receipts have a unique

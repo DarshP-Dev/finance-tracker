@@ -1,48 +1,21 @@
 $ErrorActionPreference = 'Stop'
-
-$originalDatabasePassword = $env:DB_PASSWORD
-$originalJwtSecret = $env:JWT_SECRET
-Push-Location $PSScriptRoot
+. (Join-Path $PSScriptRoot 'dev-environment.ps1')
+foreach ($localConnectionUrl in @($env:DB_URL, $env:SPRING_DATASOURCE_URL)) {
+    if ($localConnectionUrl -and $localConnectionUrl -notmatch '^jdbc:postgresql://(localhost|127\.0\.0\.1)(:[0-9]+)?/[^?]+(\?.*)?$') {
+        throw 'start-dev.ps1 is local-only. Configure production separately; see docs/database-migrations.md.'
+    }
+}
+if ($env:DB_DDL_AUTO -and $env:DB_DDL_AUTO -ne 'validate') {
+    throw 'Remove the obsolete DB_DDL_AUTO override; Hibernate now validates and Flyway owns the schema.'
+}
+$originalMigrationMode = $env:DB_MIGRATION_MODE
 try {
-    $secretDirectory = Join-Path $PSScriptRoot '.local'
-    New-Item -ItemType Directory -Path $secretDirectory -Force | Out-Null
-
-    if ([string]::IsNullOrWhiteSpace($env:DB_PASSWORD)) {
-        $databasePasswordPath = Join-Path $secretDirectory 'database-password.clixml'
-
-        if (Test-Path -LiteralPath $databasePasswordPath) {
-            $secureDatabasePassword = Import-Clixml -LiteralPath $databasePasswordPath
-        } else {
-            Write-Host 'Database password is not configured. Enter it once to store it with Windows user encryption.'
-            $secureDatabasePassword = Read-Host 'PostgreSQL password' -AsSecureString
-            $secureDatabasePassword | Export-Clixml -LiteralPath $databasePasswordPath
-        }
-
-        $databaseCredential = [System.Management.Automation.PSCredential]::new(
-            'database',
-            $secureDatabasePassword
-        )
-        $env:DB_PASSWORD = $databaseCredential.GetNetworkCredential().Password
+    if ([string]::IsNullOrWhiteSpace($env:DB_MIGRATION_MODE)) { $env:DB_MIGRATION_MODE = 'migrate' }
+    Write-Host 'Flyway will reject a populated database without verified baseline history. See docs/database-migrations.md.'
+    Invoke-WithDevEnvironment {
+        & .\mvnw.cmd spring-boot:run
+        if ($LASTEXITCODE -ne 0) { throw 'Backend startup failed. Check Flyway history/schema diagnostics; do not enable automatic baselining.' }
     }
-
-    if ([string]::IsNullOrWhiteSpace($env:JWT_SECRET)) {
-        $secretPath = Join-Path $secretDirectory 'jwt-secret'
-        if (-not (Test-Path -LiteralPath $secretPath)) {
-            $secretBytes = New-Object byte[] 48
-            $random = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-            try {
-                $random.GetBytes($secretBytes)
-            } finally {
-                $random.Dispose()
-            }
-            [System.IO.File]::WriteAllText($secretPath, [Convert]::ToBase64String($secretBytes))
-        }
-        $env:JWT_SECRET = [System.IO.File]::ReadAllText($secretPath).Trim()
-    }
-
-    & .\mvnw.cmd spring-boot:run
 } finally {
-    $env:DB_PASSWORD = $originalDatabasePassword
-    $env:JWT_SECRET = $originalJwtSecret
-    Pop-Location
+    $env:DB_MIGRATION_MODE = $originalMigrationMode
 }

@@ -1,0 +1,147 @@
+column|ai_insights|generated_at|timestamp(6) without time zone|t||||
+column|ai_insights|id|bigint|t|d|||
+column|ai_insights|insight_text|text|t||||default
+column|ai_insights|user_id|bigint|t||||
+column|budgets|budget_month|date|t||||
+column|budgets|category|character varying(50)|t||||default
+column|budgets|created_at|timestamp(6) without time zone|t||||
+column|budgets|id|bigint|t|d|||
+column|budgets|monthly_limit|numeric(19,4)|t||||
+column|budgets|user_id|bigint|t||||
+column|investments|created_at|timestamp(6) without time zone|t||||
+column|investments|id|bigint|t|d|||
+column|investments|purchase_date|date|t||||
+column|investments|purchase_price|numeric(19,4)|t||||
+column|investments|shares|numeric(19,6)|t||||
+column|investments|ticker|character varying(20)|t||||default
+column|investments|user_id|bigint|t||||
+column|market_quote_snapshots|confirmed_close|boolean|f||||
+column|market_quote_snapshots|created_at|timestamp(6) with time zone|t||||
+column|market_quote_snapshots|currency|character varying(3)|t||||default
+column|market_quote_snapshots|fetched_at|timestamp(6) with time zone|t||||
+column|market_quote_snapshots|market_timestamp|timestamp(6) with time zone|f||||
+column|market_quote_snapshots|previous_close|numeric(36,12)|f||||
+column|market_quote_snapshots|price|numeric(36,12)|t||||
+column|market_quote_snapshots|session_date|date|f||||
+column|market_quote_snapshots|source|character varying(32)|t||||default
+column|market_quote_snapshots|symbol|character varying(20)|t||||default
+column|market_quote_snapshots|updated_at|timestamp(6) with time zone|t||||
+column|notification_receipts|id|bigint|t|d|||
+column|notification_receipts|reference_key|character varying(200)|t||||default
+column|notification_receipts|user_id|bigint|t||||
+column|notifications|created_at|timestamp(6) with time zone|t||||
+column|notifications|id|bigint|t|d|||
+column|notifications|is_read|boolean|t||||
+column|notifications|message|character varying(1000)|t||||default
+column|notifications|related_entity_id|bigint|f||||
+column|notifications|severity|character varying(20)|t||||default
+column|notifications|target_path|character varying(100)|t||||default
+column|notifications|title|character varying(100)|t||||default
+column|notifications|type|character varying(20)|t||||default
+column|notifications|user_id|bigint|t||||
+column|recurring_transactions|active|boolean|t||||
+column|recurring_transactions|amount|numeric(19,4)|t||||
+column|recurring_transactions|category|character varying(50)|t||||default
+column|recurring_transactions|created_at|timestamp(6) without time zone|t||||
+column|recurring_transactions|description|character varying(500)|f||||default
+column|recurring_transactions|end_date|date|f||||
+column|recurring_transactions|frequency|character varying(20)|t||||default
+column|recurring_transactions|id|bigint|t|d|||
+column|recurring_transactions|last_generated_date|date|f||||
+column|recurring_transactions|merchant|character varying(150)|f||||default
+column|recurring_transactions|next_occurrence|date|t||||
+column|recurring_transactions|start_date|date|t||||
+column|recurring_transactions|type|character varying(20)|t||||default
+column|recurring_transactions|user_id|bigint|t||||
+column|transactions|amount|numeric(19,4)|t||||
+column|transactions|category|character varying(50)|t||||default
+column|transactions|created_at|timestamp(6) without time zone|t||||
+column|transactions|description|character varying(500)|f||||default
+column|transactions|id|bigint|t|d|||
+column|transactions|merchant|character varying(150)|f||||default
+column|transactions|transaction_date|date|t||||
+column|transactions|type|character varying(20)|t||||default
+column|transactions|user_id|bigint|t||||
+column|users|email|character varying(255)|t||||default
+column|users|id|bigint|t|d|||
+column|users|password|character varying(255)|t||||default
+column|users|username|character varying(50)|t||||default
+constraint|ai_insights|ai_insights_pkey|p|t|f|f|PRIMARY KEY (id)
+constraint|ai_insights|fk_ai_insights_user|f|t|f|f|FOREIGN KEY (user_id) REFERENCES users(id)
+constraint|budgets|budgets_category_check|c|t|f|f|CHECK (category::text = ANY (ARRAY['FOOD'::character varying, 'RENT'::character varying, 'HOUSING'::character varying, 'UTILITIES'::character varying, 'GROCERIES'::character varying, 'DINING'::character varying, 'TRANSPORTATION'::character varying, 'HEALTHCARE'::character varying, 'INSURANCE'::character varying, 'DEBT_PAYMENT'::character varying, 'ENTERTAINMENT'::character varying, 'SHOPPING'::character varying, 'HEALTH'::character varying, 'EDUCATION'::character varying, 'TRAVEL'::character varying, 'SALARY'::character varying, 'INVESTMENT_INCOME'::character varying, 'TRANSFER'::character varying, 'OTHER'::character varying]::text[]))
+constraint|budgets|budgets_pkey|p|t|f|f|PRIMARY KEY (id)
+constraint|budgets|fk_budgets_user|f|t|f|f|FOREIGN KEY (user_id) REFERENCES users(id)
+constraint|budgets|uk_budgets_user_category_month|u|t|f|f|UNIQUE (user_id, category, budget_month)
+constraint|investments|ck_investments_purchase_price_positive|c|t|f|f|CHECK (purchase_price > 0::numeric)
+constraint|investments|ck_investments_shares_positive|c|t|f|f|CHECK (shares > 0::numeric)
+constraint|investments|fk_investments_user|f|t|f|f|FOREIGN KEY (user_id) REFERENCES users(id)
+constraint|investments|investments_pkey|p|t|f|f|PRIMARY KEY (id)
+constraint|market_quote_snapshots|market_quote_snapshots_pkey|p|t|f|f|PRIMARY KEY (symbol)
+constraint|notification_receipts|fk_notification_receipts_user|f|t|f|f|FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+constraint|notification_receipts|notification_receipts_pkey|p|t|f|f|PRIMARY KEY (id)
+constraint|notification_receipts|uk_notification_receipts_user_key|u|t|f|f|UNIQUE (user_id, reference_key)
+constraint|notifications|fk_notifications_user|f|t|f|f|FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+constraint|notifications|notifications_pkey|p|t|f|f|PRIMARY KEY (id)
+constraint|notifications|notifications_severity_check|c|t|f|f|CHECK (severity::text = ANY (ARRAY['INFO'::character varying, 'WARNING'::character varying, 'ERROR'::character varying]::text[]))
+constraint|notifications|notifications_type_check|c|t|f|f|CHECK (type::text = ANY (ARRAY['BUDGET'::character varying, 'RECURRING'::character varying, 'SYSTEM'::character varying]::text[]))
+constraint|recurring_transactions|fk_recurring_transactions_user|f|t|f|f|FOREIGN KEY (user_id) REFERENCES users(id)
+constraint|recurring_transactions|recurring_transactions_category_check|c|t|f|f|CHECK (category::text = ANY (ARRAY['FOOD'::character varying, 'RENT'::character varying, 'HOUSING'::character varying, 'UTILITIES'::character varying, 'GROCERIES'::character varying, 'DINING'::character varying, 'TRANSPORTATION'::character varying, 'HEALTHCARE'::character varying, 'INSURANCE'::character varying, 'DEBT_PAYMENT'::character varying, 'ENTERTAINMENT'::character varying, 'SHOPPING'::character varying, 'HEALTH'::character varying, 'EDUCATION'::character varying, 'TRAVEL'::character varying, 'SALARY'::character varying, 'INVESTMENT_INCOME'::character varying, 'TRANSFER'::character varying, 'OTHER'::character varying]::text[]))
+constraint|recurring_transactions|recurring_transactions_frequency_check|c|t|f|f|CHECK (frequency::text = ANY (ARRAY['WEEKLY'::character varying, 'BIWEEKLY'::character varying, 'MONTHLY'::character varying, 'YEARLY'::character varying]::text[]))
+constraint|recurring_transactions|recurring_transactions_pkey|p|t|f|f|PRIMARY KEY (id)
+constraint|recurring_transactions|recurring_transactions_type_check|c|t|f|f|CHECK (type::text = ANY (ARRAY['INCOME'::character varying, 'EXPENSE'::character varying]::text[]))
+constraint|transactions|fk_transactions_user|f|t|f|f|FOREIGN KEY (user_id) REFERENCES users(id)
+constraint|transactions|transactions_category_check|c|t|f|f|CHECK (category::text = ANY (ARRAY['FOOD'::character varying, 'RENT'::character varying, 'HOUSING'::character varying, 'UTILITIES'::character varying, 'GROCERIES'::character varying, 'DINING'::character varying, 'TRANSPORTATION'::character varying, 'HEALTHCARE'::character varying, 'INSURANCE'::character varying, 'DEBT_PAYMENT'::character varying, 'ENTERTAINMENT'::character varying, 'SHOPPING'::character varying, 'HEALTH'::character varying, 'EDUCATION'::character varying, 'TRAVEL'::character varying, 'SALARY'::character varying, 'INVESTMENT_INCOME'::character varying, 'TRANSFER'::character varying, 'OTHER'::character varying]::text[]))
+constraint|transactions|transactions_pkey|p|t|f|f|PRIMARY KEY (id)
+constraint|transactions|transactions_type_check|c|t|f|f|CHECK (type::text = ANY (ARRAY['INCOME'::character varying, 'EXPENSE'::character varying]::text[]))
+constraint|users|uk_users_email|u|t|f|f|UNIQUE (email)
+constraint|users|uk_users_username|u|t|f|f|UNIQUE (username)
+constraint|users|users_pkey|p|t|f|f|PRIMARY KEY (id)
+extension|plpgsql|1.0|pg_catalog
+index|ai_insights|ai_insights_pkey|t|t|CREATE UNIQUE INDEX ai_insights_pkey ON public.ai_insights USING btree (id)
+index|ai_insights|idx_ai_insights_user_generated_at|t|t|CREATE INDEX idx_ai_insights_user_generated_at ON public.ai_insights USING btree (user_id, generated_at)
+index|budgets|budgets_pkey|t|t|CREATE UNIQUE INDEX budgets_pkey ON public.budgets USING btree (id)
+index|budgets|idx_budgets_user_month|t|t|CREATE INDEX idx_budgets_user_month ON public.budgets USING btree (user_id, budget_month)
+index|budgets|uk_budgets_user_category_month|t|t|CREATE UNIQUE INDEX uk_budgets_user_category_month ON public.budgets USING btree (user_id, category, budget_month)
+index|investments|idx_investments_user_purchase_date|t|t|CREATE INDEX idx_investments_user_purchase_date ON public.investments USING btree (user_id, purchase_date)
+index|investments|idx_investments_user_ticker|t|t|CREATE INDEX idx_investments_user_ticker ON public.investments USING btree (user_id, ticker)
+index|investments|investments_pkey|t|t|CREATE UNIQUE INDEX investments_pkey ON public.investments USING btree (id)
+index|market_quote_snapshots|market_quote_snapshots_pkey|t|t|CREATE UNIQUE INDEX market_quote_snapshots_pkey ON public.market_quote_snapshots USING btree (symbol)
+index|notification_receipts|notification_receipts_pkey|t|t|CREATE UNIQUE INDEX notification_receipts_pkey ON public.notification_receipts USING btree (id)
+index|notification_receipts|uk_notification_receipts_user_key|t|t|CREATE UNIQUE INDEX uk_notification_receipts_user_key ON public.notification_receipts USING btree (user_id, reference_key)
+index|notifications|idx_notifications_user_created|t|t|CREATE INDEX idx_notifications_user_created ON public.notifications USING btree (user_id, created_at, id)
+index|notifications|idx_notifications_user_read|t|t|CREATE INDEX idx_notifications_user_read ON public.notifications USING btree (user_id, is_read)
+index|notifications|notifications_pkey|t|t|CREATE UNIQUE INDEX notifications_pkey ON public.notifications USING btree (id)
+index|recurring_transactions|idx_recurring_transactions_due|t|t|CREATE INDEX idx_recurring_transactions_due ON public.recurring_transactions USING btree (active, next_occurrence, id)
+index|recurring_transactions|idx_recurring_transactions_user_next|t|t|CREATE INDEX idx_recurring_transactions_user_next ON public.recurring_transactions USING btree (user_id, next_occurrence)
+index|recurring_transactions|recurring_transactions_pkey|t|t|CREATE UNIQUE INDEX recurring_transactions_pkey ON public.recurring_transactions USING btree (id)
+index|transactions|idx_transactions_user_category|t|t|CREATE INDEX idx_transactions_user_category ON public.transactions USING btree (user_id, category)
+index|transactions|idx_transactions_user_date|t|t|CREATE INDEX idx_transactions_user_date ON public.transactions USING btree (user_id, transaction_date)
+index|transactions|transactions_pkey|t|t|CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (id)
+index|users|uk_users_email|t|t|CREATE UNIQUE INDEX uk_users_email ON public.users USING btree (email)
+index|users|uk_users_username|t|t|CREATE UNIQUE INDEX uk_users_username ON public.users USING btree (username)
+index|users|users_pkey|t|t|CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)
+relation|ai_insights_id_seq|S|p|f|f|n|
+relation|ai_insights|r|p|f|f|d|heap
+relation|budgets_id_seq|S|p|f|f|n|
+relation|budgets|r|p|f|f|d|heap
+relation|investments_id_seq|S|p|f|f|n|
+relation|investments|r|p|f|f|d|heap
+relation|market_quote_snapshots|r|p|f|f|d|heap
+relation|notification_receipts_id_seq|S|p|f|f|n|
+relation|notification_receipts|r|p|f|f|d|heap
+relation|notifications_id_seq|S|p|f|f|n|
+relation|notifications|r|p|f|f|d|heap
+relation|recurring_transactions_id_seq|S|p|f|f|n|
+relation|recurring_transactions|r|p|f|f|d|heap
+relation|transactions_id_seq|S|p|f|f|n|
+relation|transactions|r|p|f|f|d|heap
+relation|users_id_seq|S|p|f|f|n|
+relation|users|r|p|f|f|d|heap
+sequence|ai_insights_id_seq|bigint|1|1|1|9223372036854775807|1|f|ai_insights|id|i
+sequence|budgets_id_seq|bigint|1|1|1|9223372036854775807|1|f|budgets|id|i
+sequence|investments_id_seq|bigint|1|1|1|9223372036854775807|1|f|investments|id|i
+sequence|notification_receipts_id_seq|bigint|1|1|1|9223372036854775807|1|f|notification_receipts|id|i
+sequence|notifications_id_seq|bigint|1|1|1|9223372036854775807|1|f|notifications|id|i
+sequence|recurring_transactions_id_seq|bigint|1|1|1|9223372036854775807|1|f|recurring_transactions|id|i
+sequence|transactions_id_seq|bigint|1|1|1|9223372036854775807|1|f|transactions|id|i
+sequence|users_id_seq|bigint|1|1|1|9223372036854775807|1|f|users|id|i
