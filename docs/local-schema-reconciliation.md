@@ -1,5 +1,19 @@
 # Local schema reconciliation: investigation and reviewed adoption procedure
 
+**Final status:** local reconciliation and explicit BASELINE 1 adoption succeeded.
+The isolated Neon rehearsal and production also completed their independently
+reviewed two-investment-constraint reconciliation and adoption. All preservation
+checks passed; the corrected production backend works. See the
+[completed milestone](flyway-production-adoption-report.md).
+
+This document retains the **historical pre-adoption investigation and preparation
+report**. Its original unresolved-difference statements and approval gates are
+dated evidence, not the current database state. The local-only scripts remain
+guarded examples for a separately reviewed unadopted local database. Do not rerun
+them or baseline on an already-adopted database, and do not use them against Neon.
+
+## Historical local investigation
+
 Prepared October 12, 2026 for local PostgreSQL **17.9**, database
 `finance_tracker_db`. **Preparation and disposable testing only. The real local
 database has not been reconciled or baselined. Neon was not contacted.**
@@ -186,8 +200,8 @@ Open PowerShell and define this local-only helper. It reuses the existing
 Windows-encrypted database password without putting it in source or arguments:
 
 ```powershell
-cd C:\Users\Darsh\FinanceTracker\backend\backend
-$env:DB_URL = 'jdbc:postgresql://localhost:5432/finance_tracker_db'
+Set-Location '<repository-root>/backend/backend'
+$env:DB_URL = '<configured local JDBC URL>'
 $env:DB_USERNAME = 'postgres'
 . .\dev-environment.ps1
 

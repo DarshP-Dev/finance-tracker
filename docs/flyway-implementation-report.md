@@ -1,12 +1,21 @@
 # Flyway implementation report
 
-Follow-up, October 12, 2026: the four local differences now have separately
-reviewable SQL and a successful disposable rehearsal in
-[Local schema reconciliation](local-schema-reconciliation.md). The full suite now
-passes **500 tests**. That follow-up also fixes validation-only startup accepting
-V1 after an explicit baseline. The actual local database remains unchanged and
-unbaselined. The original implementation report below is retained as historical
-context; its 475-test result predates this follow-up.
+**Milestone complete:** local PostgreSQL, Neon rehearsal, and production adopted
+explicit BASELINE 1 after reviewed reconciliation and verified recovery. The
+corrected backend deployed successfully, and the operator confirmed live core
+functionality. The [completed adoption report](flyway-production-adoption-report.md)
+and [deployment checkpoint](neon-production-backend-release-checkpoint.md) record
+the final results and test provenance.
+
+The original implementation report below is **historical**, before any actual
+adoption. Its 475-test total and unresolved-drift/readiness statements describe
+that stage only. The local reconciliation and shared baseline validation fix
+subsequently passed 500 and 514 tests respectively; a committed repeated-startup
+regression followed. Do not use the historical adoption commands on an already
+baselined database. V1 SQL, its manifest, and runtime source are unchanged by
+milestone finalization.
+
+## Historical implementation-stage report
 
 ## A. Implementation summary
 
@@ -161,8 +170,8 @@ differences above. No reconciliation is included or authorized by this task.
 Configure the target and run read-only verification:
 
 ```powershell
-cd C:\Users\Darsh\FinanceTracker\backend\backend
-$env:DB_URL = 'jdbc:postgresql://localhost:5432/finance_tracker_db'
+Set-Location '<repository-root>/backend/backend'
+$env:DB_URL = '<configured local JDBC URL>'
 $env:DB_USERNAME = 'postgres'
 .\database.ps1 -Command verify
 ```

@@ -1,5 +1,13 @@
 # Flyway CLI validation after explicit baseline 1
 
+**Final status:** this fix is included in `fa44276` and the deployed `01c8de7`
+release. Local, rehearsal, and production validation now accept the genuine
+successful BASELINE 1 state without executing V1 SQL. Repeated full startup is
+covered by the committed `BaselinedBackendStartupTests`; production startup and
+operator-confirmed live functionality passed. See the
+[completed milestone](flyway-production-adoption-report.md). The investigation
+and 514-test result below are the historical fix-stage evidence.
+
 ## Root cause and read-only local findings
 
 The local database `finance_tracker_db` on PostgreSQL 17.9 was already reconciled
@@ -36,7 +44,7 @@ by the CLI `validate` command and validation-only startup. It:
    actual successful version 1 `BASELINE` row exists.
 3. Runs Flyway's own validation for checksums, missing/failed/pending migrations.
 4. Requires states to be `SUCCESS` or `BASELINE`, except V1 `BASELINE_IGNORED`
-   when both successful SQL history and the corresponding Flyway `BASELINE` info
+   when both genuine successful BASELINE history and the corresponding Flyway `BASELINE` info
    entry establish baseline 1. All other states are rejected with version/state
    information in the exception.
 
@@ -105,8 +113,8 @@ was committed, pushed or deployed.
 ## Command to verify the rebuilt tool
 
 ```powershell
-cd C:\Users\Darsh\FinanceTracker\backend\backend
-$env:DB_URL = 'jdbc:postgresql://localhost:5432/finance_tracker_db'
+Set-Location '<repository-root>/backend/backend'
+$env:DB_URL = '<configured local JDBC URL>'
 $env:DB_USERNAME = 'postgres'
 .\database.ps1 -Command validate
 ```

@@ -27,9 +27,11 @@ The backend reads deployment configuration from environment variables:
 Hibernate now uses `ddl-auto=validate`; Flyway owns schema changes. Existing
 populated databases require explicit verified adoption before startup. Remove
 obsolete `DB_DDL_AUTO=update` settings. See [database migrations and adoption](docs/database-migrations.md)
-for the local schema differences that currently block adoption, backup requirements,
-exact manual commands, production release ordering, and isolated PostgreSQL tests
-(`backend/backend/run-tests.ps1`). No actual local/Neon baseline is automatic.
+for startup rules, controlled release ordering, and isolated PostgreSQL tests
+(`backend/backend/run-tests.ps1`). Local, Neon rehearsal, and production V1 adoption
+are complete; the corrected production backend passed validation and the operator
+confirmed live core functionality. See the [completed Flyway milestone](docs/flyway-production-adoption-report.md).
+Existing adopted databases must not be reconciled or baselined again.
 
 In a second terminal, start the frontend:
 
@@ -517,14 +519,14 @@ are routed to Spring Boot; all other requests are routed to Next.js.
 The production database should be a Neon PostgreSQL database using Neon's pooled
 endpoint. Configure these variables in Vercel without committing their values:
 
-- `DB_URL`: pooled JDBC URL in the form
-  `jdbc:postgresql://<neon-pooled-host>/<database>?sslmode=require&channelBinding=require`
+- `DB_URL`: Neon pooled JDBC URL, configured privately with the required TLS settings
 - `DB_USERNAME`: Neon database role
 - `DB_PASSWORD`: Neon database password
 - `JWT_SECRET`: stable random JWT signing secret of at least 32 bytes
 - `DB_MIGRATION_MODE=validate`: controlled migrations run before deployment;
   Vercel startup validates existing history and Hibernate mappings without DDL.
-  Verify backup/schema and explicitly adopt existing Neon before deploying this version.
+  V1 adoption is complete. A different unadopted database requires separate
+  backup/schema verification and explicit adoption before compatible deployment.
 
 Vercel supplies `PORT`; the backend continues to use port 8080 when `PORT` is not
 set. The frontend uses same-origin `/api/...` requests in production and continues
