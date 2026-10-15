@@ -36,7 +36,10 @@ class FlywayMigrationTests {
             sql.execute("create database " + database);
         }
         url = root.substring(0, root.lastIndexOf('/') + 1) + database;
-        flyway = DatabaseMigrationTool.configured(url, user, password);
+        Path historicalV1 = Files.createTempDirectory("ft-test-v1-");
+        Files.writeString(historicalV1.resolve("V1__initial_schema.sql"), BaselineSchemaVerifier.resource("/db/migration/V1__initial_schema.sql"));
+        flyway = Flyway.configure().configuration(DatabaseMigrationTool.configured(url, user, password).getConfiguration())
+                .locations("filesystem:" + historicalV1).load();
     }
 
     @Test void freshDatabaseCreatesCanonicalSchemaAndOneHistoryEntry() throws Exception {

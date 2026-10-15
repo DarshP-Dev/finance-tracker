@@ -32,11 +32,11 @@ public class AuthService {
         String username = request.getUsername().trim();
 
         if (userRepository.existsByEmail(email)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already registered");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Unable to register with these account details");
         }
 
         if (userRepository.existsByUsername(username)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username is already taken");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Unable to register with these account details");
         }
 
         User user = User.builder()
@@ -49,9 +49,13 @@ public class AuthService {
         return buildAuthResponse(savedUser);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         String email = normalizeEmail(request.getEmail());
+        // Serialize credential verification with password changes and session rotation.
+        // Still call the AuthenticationManager for unknown emails (its dummy hash
+        // comparison avoids introducing a fast account-enumeration path).
+        var lockedUser = userRepository.lockByEmail(email);
 
         try {
             authenticationManager.authenticate(
@@ -61,7 +65,7 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password", exception);
         }
 
-        User user = userRepository.findByEmail(email)
+        User user = lockedUser
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
 
         return buildAuthResponse(user);
@@ -71,6 +75,7 @@ public class AuthService {
         return AuthResponse.builder()
                 .accessToken(jwtService.generateToken(user))
                 .tokenType("Bearer")
+                .expiresIn(jwtService.expiresIn())
                 .userId(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())

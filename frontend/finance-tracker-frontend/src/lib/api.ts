@@ -10,19 +10,8 @@ import type { Transaction, TransactionFilters, TransactionPayload } from "@/type
 
 export type AuthMode = "login" | "register";
 
-export type AuthResponse = {
-  accessToken: string;
-  tokenType: string;
-  userId: number;
-  username: string;
-  email: string;
-};
-
-export type AuthPayload = {
-  username?: string;
-  email: string;
-  password: string;
-};
+export type { AuthResponse, AuthPayload } from "./auth-session";
+import { createSessionClient, type AuthResponse } from "./auth-session";
 
 export type UpdateProfilePayload = {
   username: string;
@@ -35,62 +24,28 @@ export type ChangePasswordPayload = {
   newPassword: string;
 };
 
-export const AUTH_TOKEN_KEY = "financeTrackerToken";
-export const AUTH_USER_KEY = "financeTrackerAuth";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ??
   (process.env.NODE_ENV === "development" ? "http://localhost:8080" : "");
+const session = createSessionClient(API_BASE_URL);
+export const { api, authenticate, registerAccount, restoreSession, logoutSession,
+  storeAuth, getStoredAuth, clearStoredAuth } = session;
+export const subscribeAuth = session.subscribe;
 
-export const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
-
-api.interceptors.request.use((config) => {
-  if (typeof window === "undefined") {
-    return config;
+const notifiedResponses = new WeakSet<object>();
+api.interceptors.response.use(response => {
+  if (typeof window !== "undefined" && ["post", "put", "patch", "delete"].includes(response.config.method ?? "")
+      && /^\/api\/(transactions|budgets|recurring-transactions)(\/|$)/.test(response.config.url ?? "")
+      && !notifiedResponses.has(response)) {
+    notifiedResponses.add(response);
+    window.dispatchEvent(new Event("finance-tracker:notifications-changed"));
   }
-
-  const token = localStorage.getItem(AUTH_TOKEN_KEY);
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  return response;
+}, error => {
+  if (axios.isAxiosError(error) && !error.response && error.code === "ERR_NETWORK") {
+    error.message = "Cannot connect to the server. Make sure the backend is running, then try again.";
   }
-
-  return config;
+  return Promise.reject(error);
 });
-
-api.interceptors.response.use(
-  (response) => {
-    if (typeof window !== "undefined" && ["post", "put", "patch", "delete"].includes(response.config.method ?? "")
-        && /^\/api\/(transactions|budgets|recurring-transactions)(\/|$)/.test(response.config.url ?? "")) {
-      window.dispatchEvent(new Event("finance-tracker:notifications-changed"));
-    }
-    return response;
-  },
-  (error) => {
-    if (axios.isAxiosError(error) && !error.response && error.code === "ERR_NETWORK") {
-      error.message = "Cannot connect to the server. Make sure the backend is running, then try again.";
-    }
-
-    if (typeof window !== "undefined" && [401, 403].includes(error.response?.status)) {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-      localStorage.removeItem(AUTH_USER_KEY);
-      window.dispatchEvent(new Event("finance-tracker:unauthorized"));
-    }
-
-    return Promise.reject(error);
-  },
-);
-
-export async function authenticate(mode: AuthMode, payload: AuthPayload) {
-  const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
-  const response = await api.post<AuthResponse>(endpoint, payload);
-  storeAuth(response.data);
-  return response.data;
-}
 
 export async function fetchNotifications(page = 0, signal?: AbortSignal) {
   return (await api.get<NotificationPage>("/api/notifications", { params: { page, size: 20 }, signal })).data;
@@ -103,11 +58,6 @@ export async function markNotificationRead(id: number) {
 }
 export async function markAllNotificationsRead() { await api.patch("/api/notifications/read-all"); }
 export async function deleteNotification(id: number) { await api.delete(`/api/notifications/${id}`); }
-
-export async function registerAccount(payload: AuthPayload) {
-  const response = await api.post<AuthResponse>("/api/auth/register", payload);
-  return response.data;
-}
 
 export async function fetchTransactions(filters: TransactionFilters) {
   const params = Object.fromEntries(
@@ -267,33 +217,5 @@ export async function updateProfile(payload: UpdateProfilePayload) {
 
 export async function changePassword(payload: ChangePasswordPayload) {
   await api.put("/api/account/password", payload);
-}
-
-export function storeAuth(auth: AuthResponse) {
-  localStorage.setItem(AUTH_TOKEN_KEY, auth.accessToken);
-  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(auth));
-}
-
-export function getStoredAuth() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const rawAuth = localStorage.getItem(AUTH_USER_KEY);
-  const token = localStorage.getItem(AUTH_TOKEN_KEY);
-  if (!rawAuth || !token) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(rawAuth) as AuthResponse;
-  } catch {
-    localStorage.removeItem(AUTH_USER_KEY);
-    return null;
-  }
-}
-
-export function clearStoredAuth() {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-  localStorage.removeItem(AUTH_USER_KEY);
+  clearStoredAuth("Password changed. Please sign in again.", true);
 }

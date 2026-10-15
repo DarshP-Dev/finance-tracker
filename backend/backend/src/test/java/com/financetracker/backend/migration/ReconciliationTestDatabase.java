@@ -14,6 +14,7 @@ final class ReconciliationTestDatabase {
     static final String[] LEGACY_CATEGORIES = {"HOUSING", "UTILITIES", "GROCERIES", "DINING", "TRANSPORTATION",
             "HEALTHCARE", "INSURANCE", "DEBT_PAYMENT", "ENTERTAINMENT", "SHOPPING", "EDUCATION", "TRAVEL",
             "SALARY", "INVESTMENT_INCOME", "TRANSFER", "OTHER"};
+    private final Path v1Migrations;
     final String url;
     final String database;
     final String user = System.getenv().getOrDefault("TEST_DB_USERNAME", "postgres");
@@ -27,6 +28,8 @@ final class ReconciliationTestDatabase {
             sql(admin, "create database " + database);
         }
         url = root.substring(0, root.lastIndexOf('/') + 1) + database;
+        v1Migrations = Files.createTempDirectory("ft-test-v1-");
+        Files.writeString(v1Migrations.resolve("V1__initial_schema.sql"), BaselineSchemaVerifier.resource("/db/migration/V1__initial_schema.sql"));
         try (var connection = connection()) {
             sql(connection, BaselineSchemaVerifier.resource("/db/legacy/local-pre-flyway-schema.sql"));
             sql(connection, """
@@ -56,7 +59,10 @@ final class ReconciliationTestDatabase {
         return connection;
     }
 
-    Flyway flyway() { return DatabaseMigrationTool.configured(url, user, password); }
+    Flyway flyway() { return Flyway.configure().configuration(DatabaseMigrationTool.configured(url, user, password).getConfiguration())
+            .locations("filesystem:" + v1Migrations).load(); }
+
+    Flyway currentFlyway() { return DatabaseMigrationTool.configured(url, user, password); }
 
     void approve(Connection connection) throws Exception {
         try (var settings = connection.prepareStatement("select set_config('finance_tracker.reconciliation_approved','approved-local-four-constraints',false), set_config('finance_tracker.reconciliation_database',?,false)")) {

@@ -35,6 +35,7 @@ class AccountServiceTests {
 
     @Mock
     private JwtService jwtService;
+    @Mock private RefreshTokenService refreshTokens;
 
     @Mock
     private Authentication authentication;
@@ -44,7 +45,7 @@ class AccountServiceTests {
 
     @BeforeEach
     void setUp() {
-        accountService = new AccountService(authenticatedUserService, userRepository, passwordEncoder, jwtService);
+        accountService = new AccountService(authenticatedUserService, userRepository, passwordEncoder, jwtService, refreshTokens);
         user = User.builder()
                 .id(7L)
                 .username("Old Name")
@@ -111,5 +112,6 @@ class AccountServiceTests {
 
         assertThat(user.getPassword()).isEqualTo("encoded-new-password");
         verify(userRepository).save(user);
+        verify(refreshTokens).revokeUser(user.getId());
     }
 }

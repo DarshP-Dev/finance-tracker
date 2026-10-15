@@ -30,6 +30,8 @@ class ReconciledSchemaApplicationTests {
             DatabaseMigrationTool.baseline(connection, db.flyway(), db.database);
             connection.rollback();
         }
+        try (var connection = db.connection()) { BaselineSchemaVerifier.verify(connection, "public"); }
+        db.currentFlyway().migrate(); // Separate explicit setup; application startup is still validate-only.
         registry.add("spring.datasource.url", () -> db.url);
         registry.add("spring.datasource.username", () -> db.user);
         registry.add("spring.datasource.password", () -> db.password);
@@ -42,7 +44,7 @@ class ReconciledSchemaApplicationTests {
         try (var connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             connection.setReadOnly(true);
-            BaselineSchemaVerifier.verify(connection, "public");
+            AuthenticationMigrationTests.verifyV1Preserved(connection);
             assertThat(ReconciliationTestDatabase.fingerprint(connection)).isEqualTo(preservedRecords);
             assertThat(ReconciliationTestDatabase.sequences(connection)).isEqualTo(preservedSequences);
             assertThat(ReconciliationTestDatabase.scalar(connection,

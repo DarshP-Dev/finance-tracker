@@ -34,10 +34,11 @@ public class JwtService {
     public JwtService(
             ObjectMapper objectMapper,
             @Value("${app.security.jwt.secret:}") String secret,
-            @Value("${app.security.jwt.expiration:PT1H}") Duration expiration
+            @Value("${app.security.jwt.expiration:PT15M}") Duration expiration,
+            Clock clock
     ) {
         this.objectMapper = objectMapper;
-        this.clock = Clock.systemUTC();
+        this.clock = clock;
         this.secret = secret;
         this.expiration = expiration;
     }
@@ -59,6 +60,8 @@ public class JwtService {
         return unsignedToken + "." + sign(unsignedToken);
     }
 
+    public long expiresIn() { return expiration.getSeconds(); }
+
     public String extractUsername(String token) {
         return extractClaim(token, "sub")
                 .map(Object::toString)
@@ -67,13 +70,16 @@ public class JwtService {
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
         return parseClaims(token)
-                .map(claims -> isExpectedSubject(claims, userDetails) && !isExpired(claims))
+                .map(claims -> isExpectedSubject(claims, userDetails) && !isExpired(claims)
+                        && userDetails instanceof AccountPrincipal principal
+                        && claims.get("uid") instanceof Number id && id.longValue() == principal.userId())
                 .orElse(false);
     }
 
     @PostConstruct
     void validateConfiguration() {
         validateSecret();
+        if (expiration.getSeconds() < 1) throw new IllegalArgumentException("Access token lifetime must be positive");
     }
 
     private Optional<Object> extractClaim(String token, String claimName) {
@@ -89,6 +95,7 @@ public class JwtService {
     }
 
     private Map<String, Object> getClaims(String token) {
+        if (token == null || token.length() > 8192) throw new IllegalArgumentException("Invalid JWT length");
         String[] parts = token.split("\\.");
         if (parts.length != 3) {
             throw new IllegalArgumentException("Invalid JWT format");
@@ -101,6 +108,9 @@ public class JwtService {
         }
 
         try {
+            var header = objectMapper.readValue(Base64.getUrlDecoder().decode(parts[0]), MAP_TYPE);
+            if (!"HS256".equals(header.get("alg")) || !"JWT".equals(header.get("typ")))
+                throw new IllegalArgumentException("Invalid JWT header");
             byte[] payload = Base64.getUrlDecoder().decode(parts[1]);
             return objectMapper.readValue(payload, MAP_TYPE);
         } catch (Exception exception) {

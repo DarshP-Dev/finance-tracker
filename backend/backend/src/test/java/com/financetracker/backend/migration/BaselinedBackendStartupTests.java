@@ -24,6 +24,8 @@ class BaselinedBackendStartupTests {
             DatabaseMigrationTool.baseline(connection, db.flyway(), db.database);
             connection.rollback();
         }
+        try (var connection = db.connection()) { BaselineSchemaVerifier.verify(connection, "public"); }
+        db.currentFlyway().migrate(); // Separate explicit setup; application startup is still validate-only.
         String before = snapshot(db);
         for (int attempt = 0; attempt < 2; attempt++) {
             DisposableDatabaseGuard.requireDisposable(db.url);
@@ -71,9 +73,9 @@ class BaselinedBackendStartupTests {
             assertThat(snapshot(db)).isEqualTo(before);
         }
         try (var connection = db.connection()) {
-            assertThat(scalar(connection, "select count(*) from flyway_schema_history")).isEqualTo("1");
-            assertThat(scalar(connection, "select count(*) from flyway_schema_history where type='SQL'")).isEqualTo("0");
-            BaselineSchemaVerifier.verify(connection, "public");
+            assertThat(scalar(connection, "select count(*) from flyway_schema_history")).isEqualTo("2");
+            assertThat(scalar(connection, "select count(*) from flyway_schema_history where type='SQL' and version='1'")).isEqualTo("0");
+            AuthenticationMigrationTests.verifyV1Preserved(connection);
         }
     }
 

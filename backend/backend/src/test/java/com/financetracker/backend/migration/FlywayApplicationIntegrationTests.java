@@ -19,6 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT)
 class FlywayApplicationIntegrationTests {
+    private final HttpClient client = HttpClient.newBuilder().cookieHandler(new java.net.CookieManager(null, java.net.CookiePolicy.ACCEPT_ALL)).build();
     @LocalServerPort int port;
     @Autowired Flyway flyway;
     @Autowired DataSource dataSource;
@@ -30,9 +31,10 @@ class FlywayApplicationIntegrationTests {
         try (var connection=dataSource.getConnection()) {
             connection.setAutoCommit(false);
             connection.setReadOnly(true);
-            BaselineSchemaVerifier.verify(connection,"public");
+            AuthenticationMigrationTests.verifyV1Preserved(connection);
             connection.rollback();
         }
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version='2' and type='SQL' and success",Integer.class)).isEqualTo(1);
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         flyway.validate();
         assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where version='1' and success",Integer.class)).isEqualTo(1);
@@ -82,9 +84,14 @@ class FlywayApplicationIntegrationTests {
 
     private HttpResponse<String> call(String path,String method,String body,String token) throws Exception {
         var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path));
+        if (path.startsWith("/api/auth/") && method.equals("POST")) {
+            var csrf = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/auth/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
+            var value = mapper.readTree(csrf.body());
+            request.header(value.path("headerName").asText(), value.path("token").asText());
+        }
         if(token!=null) request.header("Authorization","Bearer "+token);
         if(body!=null) request.header("Content-Type","application/json");
         request.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body));
-        return HttpClient.newHttpClient().send(request.build(),HttpResponse.BodyHandlers.ofString());
+        return client.send(request.build(),HttpResponse.BodyHandlers.ofString());
     }
 }

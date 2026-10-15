@@ -9,7 +9,9 @@ import { TransactionDashboard } from "@/components/transactions/TransactionDashb
 import {
   authenticate,
   clearStoredAuth,
-  getStoredAuth,
+  restoreSession,
+  subscribeAuth,
+  logoutSession,
   registerAccount,
   type AuthMode,
   type AuthResponse,
@@ -26,12 +28,14 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setAuth(getStoredAuth());
-      setHasHydrated(true);
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
+    let active = true;
+    const unsubscribe = subscribeAuth((session, message) => {
+      if (active) { setAuth(session); setStatus(message); }
+    });
+    void restoreSession().then(session => {
+      if (active) { setAuth(session); setHasHydrated(true); }
+    });
+    return () => { active = false; unsubscribe(); };
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -52,6 +56,7 @@ export default function Home() {
       }
 
       const response = await authenticate(mode, { email, password });
+      setPassword("");
       setAuth(response);
       setStatus("");
     } catch (error) {
@@ -62,7 +67,7 @@ export default function Home() {
   }
 
   if (!hasHydrated) {
-    return <main className="min-h-screen bg-[#f5f7fb]" />;
+    return <main className="min-h-screen bg-[#f5f7fb] p-8" role="status">Restoring your session…</main>;
   }
 
   if (auth) {
@@ -166,6 +171,9 @@ export default function Home() {
               <p className="mt-4 rounded-md bg-[#fff4ed] px-3 py-2 text-sm text-[#9a3412]">
                 {status}
               </p>
+            )}
+            {status.includes("server logout could not be confirmed") && (
+              <Button type="button" className="mt-3" onClick={() => void logoutSession()}>Retry logout</Button>
             )}
           </div>
         </div>

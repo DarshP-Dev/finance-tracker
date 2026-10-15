@@ -21,6 +21,9 @@ public class DatabaseMigrationConfiguration {
             try {
                 if (mode.equals("migrate")) {
                     try (var connection = flyway.getConfiguration().getDataSource().getConnection()) {
+                        String url = connection.getMetaData().getURL();
+                        if (url == null || !url.matches("^jdbc:postgresql://(localhost|127\\.0\\.0\\.1)(:[0-9]+)?/[^?]+(\\?.*)?$"))
+                            throw new IllegalStateException("Startup migrations are restricted to loopback databases; apply remote migrations explicitly");
                         connection.setReadOnly(true);
                         DatabaseMigrationTool.checkHistory(connection);
                     }

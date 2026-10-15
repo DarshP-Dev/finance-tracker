@@ -129,7 +129,7 @@ class InvestmentPortfolioIntegrationTests {
         assertThat(snapshot()).isEqualTo(before);
     }
     @Test void jwtAuthenticationAndUserIsolationAreEnforced() throws Exception {
-        assertThat(request(null, "/api/investments/portfolio", "GET", null).statusCode()).isEqualTo(403);
+        assertThat(request(null, "/api/investments/portfolio", "GET", null).statusCode()).isEqualTo(401);
         var otherResponse = request(other, "/api/investments/portfolio", "GET", null);
         assertThat(otherResponse.statusCode()).isEqualTo(200);
         assertThat(otherResponse.body()).contains("OTHER").doesNotContain("AAPL", "MSFT");
@@ -192,7 +192,7 @@ class InvestmentPortfolioIntegrationTests {
         }
         var otherResponse = request(other, "/api/investments/portfolio/refresh?userId=" + owner.getId(), "POST", null);
         assertThat(otherResponse.body()).contains("OTHER").doesNotContain("AAPL", "MSFT");
-        assertThat(request(null, "/api/investments/portfolio/refresh", "POST", null).statusCode()).isEqualTo(403);
+        assertThat(request(null, "/api/investments/portfolio/refresh", "POST", null).statusCode()).isEqualTo(401);
         clock.advance(120);
         assertThat(request(owner, "/api/investments/portfolio/refresh", "POST", null).body()).contains("ACCEPTED");
         verify(provider, times(1)).getQuotes(anySet());

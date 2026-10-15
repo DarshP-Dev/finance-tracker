@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
 
     private final AccountService accountService;
+    private final com.financetracker.backend.security.RefreshCookie refreshCookie;
 
     @PostMapping("/verify-password")
     public ResponseEntity<PasswordVerificationResponse> verifyPassword(
@@ -44,9 +45,12 @@ public class AccountController {
     @PutMapping("/password")
     public ResponseEntity<Void> changePassword(
             Authentication authentication,
-            @Valid @RequestBody ChangePasswordRequest request
+            @Valid @RequestBody ChangePasswordRequest request,
+            jakarta.servlet.http.HttpServletRequest servletRequest,
+            jakarta.servlet.http.HttpServletResponse servletResponse
     ) {
         accountService.changePassword(authentication, request);
+        refreshCookie.clear(servletRequest, servletResponse);
         return ResponseEntity.noContent().build();
     }
 }

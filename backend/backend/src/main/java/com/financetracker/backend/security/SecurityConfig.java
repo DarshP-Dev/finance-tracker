@@ -16,6 +16,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -30,9 +31,21 @@ public class SecurityConfig {
     private final JwtFilter jwtFilter;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+            @Value("${app.security.refresh.cookie.same-site:Lax}") String sameSite,
+            @Value("${app.security.refresh.cookie.secure:auto}") String secure) throws Exception {
         return http
-                .csrf(AbstractHttpConfigurer::disable)
+                .csrf(csrf -> {
+                    CookieCsrfTokenRepository repository = new CookieCsrfTokenRepository();
+                    repository.setCookiePath("/api/auth");
+                    repository.setCookieCustomizer(builder -> {
+                        builder.httpOnly(true).sameSite(sameSite);
+                        if (secure.equals("true")) builder.secure(true);
+                    });
+                    csrf.csrfTokenRepository(repository).requireCsrfProtectionMatcher(request ->
+                            request.getServletPath().startsWith("/api/auth/")
+                            && !List.of("GET", "HEAD", "OPTIONS", "TRACE").contains(request.getMethod()));
+                })
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
@@ -42,8 +55,26 @@ public class SecurityConfig {
                 )
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
+                .logout(AbstractHttpConfigurer::disable)
+                .exceptionHandling(errors -> errors.accessDeniedHandler(SecurityConfig::denyAccess)
+                        .authenticationEntryPoint((request, response, error) -> {
+                    response.setStatus(401);
+                    response.setContentType("application/json");
+                    response.setHeader("Cache-Control", "no-store");
+                    response.getWriter().write("{\"status\":401,\"message\":\"Authentication required\",\"code\":\"AUTHENTICATION_REQUIRED\"}");
+                }))
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    private static void denyAccess(jakarta.servlet.http.HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response,
+            org.springframework.security.access.AccessDeniedException error) throws java.io.IOException {
+        response.setStatus(403);
+        response.setContentType("application/json");
+        response.setHeader("Cache-Control", "no-store");
+        String code = error instanceof org.springframework.security.web.csrf.CsrfException ? "CSRF_INVALID" : "FORBIDDEN";
+        response.getWriter().write("{\"status\":403,\"message\":\"Access verification failed\",\"code\":\"" + code + "\"}");
     }
 
     @Bean
@@ -60,22 +91,13 @@ public class SecurityConfig {
     }
 
     @Bean
-    public FilterRegistrationBean<AuthRequestDiagnosticsFilter> authRequestDiagnosticsFilter() {
-        FilterRegistrationBean<AuthRequestDiagnosticsFilter> registration =
-                new FilterRegistrationBean<>(new AuthRequestDiagnosticsFilter());
-        registration.addUrlPatterns("/api/auth/*");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        return registration;
-    }
-
-    @Bean
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${app.security.cors.allowed-origins:http://localhost:3000}") String allowedOrigins
     ) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(splitProperty(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-XSRF-TOKEN"));
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
 

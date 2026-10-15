@@ -20,6 +20,11 @@ public class AuthenticatedUserService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication is required");
         }
 
+        if (authentication.getPrincipal() instanceof com.financetracker.backend.security.AccountPrincipal principal) {
+            return userRepository.findById(principal.userId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user not found"));
+        }
+
         String email = authentication.getName().toLowerCase(Locale.ROOT).trim();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authenticated user not found"));

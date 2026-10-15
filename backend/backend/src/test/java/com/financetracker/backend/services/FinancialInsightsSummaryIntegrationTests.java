@@ -87,9 +87,9 @@ class FinancialInsightsSummaryIntegrationTests {
         }));
     }
     @Test void summaryRejectsAnonymousAndInvalidJwt() throws Exception {
-        assertThat(get(null, "/api/financial-insights/summary").statusCode()).isEqualTo(403);
+        assertThat(get(null, "/api/financial-insights/summary").statusCode()).isEqualTo(401);
         var request = HttpRequest.newBuilder(URI.create(url("/api/financial-insights/summary"))).header("Authorization", "Bearer invalid-token").GET().build();
-        assertThat(HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
+        assertThat(HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
         verifyNoInteractions(provider);
     }
     @Test void ownershipAndCacheNeverUseRequestedUserId() throws Exception {

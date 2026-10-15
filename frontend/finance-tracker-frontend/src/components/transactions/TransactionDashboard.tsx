@@ -18,7 +18,7 @@ import { UpcomingRecurringView } from "@/components/transactions/UpcomingRecurri
 import { TransactionForm, type TransactionFormSubmission } from "@/components/transactions/TransactionForm";
 import { TransactionTable } from "@/components/transactions/TransactionTable";
 import {
-  clearStoredAuth,
+  logoutSession,
   createRecurringTransaction,
   createTransaction,
   deleteRecurringTransaction,
@@ -281,7 +281,7 @@ export function TransactionDashboard({ auth, onAuthChange, onSignOut }: Transact
   }
 
   function handleSignOut() {
-    clearStoredAuth();
+    void logoutSession();
     onSignOut();
     router.replace(appViewRoutes.dashboard);
   }

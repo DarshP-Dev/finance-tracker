@@ -100,11 +100,11 @@ class FinancialInsightsIntegrationTests {
     }
 
     @Test void endpointRejectsAnonymousAndInvalidJwt() throws Exception {
-        assertThat(get(null, "").statusCode()).isEqualTo(403);
+        assertThat(get(null, "").statusCode()).isEqualTo(401);
         var request = HttpRequest.newBuilder(URI.create(url("")))
                 .header("Authorization", "Bearer invalid-token").GET().build();
         assertThat(HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).statusCode())
-                .isEqualTo(403);
+                .isEqualTo(401);
     }
 
     @Test void callerCannotChooseAnotherUsersData() throws Exception {

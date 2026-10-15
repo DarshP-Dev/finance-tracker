@@ -98,10 +98,10 @@ class NotificationIntegrationTests {
     }
     @Test void everyEndpointRequiresAuthentication() throws Exception {
         for (var path : List.of("/api/notifications", "/api/notifications/unread-count"))
-            assertThat(call(null, path, "GET").statusCode()).isEqualTo(403);
-        assertThat(call(null, "/api/notifications/1/read", "PATCH").statusCode()).isEqualTo(403);
-        assertThat(call(null, "/api/notifications/read-all", "PATCH").statusCode()).isEqualTo(403);
-        assertThat(call(null, "/api/notifications/1", "DELETE").statusCode()).isEqualTo(403);
+            assertThat(call(null, path, "GET").statusCode()).isEqualTo(401);
+        assertThat(call(null, "/api/notifications/1/read", "PATCH").statusCode()).isEqualTo(401);
+        assertThat(call(null, "/api/notifications/read-all", "PATCH").statusCode()).isEqualTo(401);
+        assertThat(call(null, "/api/notifications/1", "DELETE").statusCode()).isEqualTo(401);
     }
     @Test void markingOneReadIsIdempotentAndUpdatesCount() throws Exception {
         alert(owner, "one"); alert(owner, "two"); long id = own().getFirst().getId();

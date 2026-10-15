@@ -14,7 +14,7 @@ import com.financetracker.backend.controllers.DashboardController;
 import com.financetracker.backend.controllers.RecurringTransactionController;
 import com.financetracker.backend.controllers.RecurringCronController;
 import com.financetracker.backend.services.AnalyticsService;
-import com.financetracker.backend.services.AuthService;
+import com.financetracker.backend.services.AuthenticationSessionService;
 import com.financetracker.backend.services.DashboardService;
 import com.financetracker.backend.services.RecurringTransactionService;
 import com.financetracker.backend.services.RecurringForecastService;
@@ -58,7 +58,10 @@ class SecurityConfigTests {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private AuthService authService;
+    private AuthenticationSessionService authService;
+
+    @MockitoBean private com.financetracker.backend.services.RefreshTokenService refreshTokens;
+    @MockitoBean private RefreshCookie refreshCookie;
 
     @MockitoBean
     private DashboardService dashboardService;
@@ -70,6 +73,10 @@ class SecurityConfigTests {
     private com.financetracker.backend.services.InvestmentPortfolioService portfolioService;
 
     @BeforeEach void portfolioResponses() {
+        var issued = org.mockito.Mockito.mock(com.financetracker.backend.services.RefreshTokenService.IssuedSession.class);
+        when(issued.auth()).thenReturn(com.financetracker.backend.dto.AuthResponse.builder().userId(1L).build());
+        when(authService.login(any())).thenReturn(issued);
+
         when(portfolioService.getPortfolio(any())).thenReturn(new com.financetracker.backend.dto.PortfolioResponse(
                 new com.financetracker.backend.dto.PortfolioResponse.Summary(java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
                         java.math.BigDecimal.ZERO, null, 0, 0, "USD", com.financetracker.backend.dto.PortfolioResponse.ValuationStatus.EMPTY, null), java.util.List.of()));
@@ -89,9 +96,9 @@ class SecurityConfigTests {
     @Test
     void upcomingAndForecastRequireAuthentication() throws Exception {
         mockMvc.perform(get("/api/recurring-transactions/upcoming"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/recurring-transactions/forecast"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -157,7 +164,7 @@ class SecurityConfigTests {
 
     @Test
     void allowsRegistrationWithoutAuthentication() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/auth/register").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(REGISTER_REQUEST))
                 .andExpect(status().isCreated());
@@ -165,7 +172,7 @@ class SecurityConfigTests {
 
     @Test
     void allowsLoginWithoutAuthentication() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post("/api/auth/login").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(LOGIN_REQUEST))
                 .andExpect(status().isOk());
@@ -174,7 +181,7 @@ class SecurityConfigTests {
     @Test
     void rejectsDashboardWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/api/dashboard"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -186,7 +193,7 @@ class SecurityConfigTests {
     @Test
     void rejectsAnalyticsWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/api/analytics"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -198,7 +205,7 @@ class SecurityConfigTests {
     @Test
     void rejectsRecurringTransactionsWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/api/recurring-transactions"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -221,7 +228,7 @@ class SecurityConfigTests {
 
     @Test
     void allowsPublicAuthThroughTheVercelForwardedOrigin() throws Exception {
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/auth/register").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())
                         .header(HttpHeaders.ORIGIN, "https://finance-tracker.vercel.app")
                         .header(HttpHeaders.HOST, "backend.internal")
                         .header("X-Forwarded-Host", "finance-tracker.vercel.app")

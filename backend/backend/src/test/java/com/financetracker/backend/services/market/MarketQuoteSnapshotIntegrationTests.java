@@ -169,7 +169,7 @@ class MarketQuoteSnapshotIntegrationTests {
         assertThat(call(owner, "/api/financial-insights").body()).doesNotContain("investment-performance", c);
         assertThat(financialRows()).isEqualTo(before);
         verifyNoInteractions(provider);
-        assertThat(call(null, "/api/investments/portfolio").statusCode()).isEqualTo(403);
+        assertThat(call(null, "/api/investments/portfolio").statusCode()).isEqualTo(401);
         assertThat(call(other, "/api/investments/portfolio?quotePolicy=CACHE_ONLY").body()).doesNotContain(a, b);
         verifyNoInteractions(provider);
     }

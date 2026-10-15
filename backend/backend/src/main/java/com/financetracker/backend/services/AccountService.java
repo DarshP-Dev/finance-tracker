@@ -23,6 +23,7 @@ public class AccountService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokens;
 
     @Transactional(readOnly = true)
     public void verifyPassword(Authentication authentication, String password) {
@@ -53,6 +54,7 @@ public class AccountService {
         return AuthResponse.builder()
                 .accessToken(jwtService.generateToken(savedUser))
                 .tokenType("Bearer")
+                .expiresIn(jwtService.expiresIn())
                 .userId(savedUser.getId())
                 .username(savedUser.getUsername())
                 .email(savedUser.getEmail())
@@ -70,6 +72,7 @@ public class AccountService {
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+        refreshTokens.revokeUser(user.getId());
     }
 
     private void requireCorrectPassword(User user, String password) {

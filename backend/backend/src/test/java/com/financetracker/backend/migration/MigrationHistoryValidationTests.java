@@ -52,6 +52,7 @@ class MigrationHistoryValidationTests {
     }
 
     @Test void repeatedCliValidationSucceedsWithoutAnyDatabaseChanges() throws Exception {
+        db.currentFlyway().migrate();
         String before = snapshot();
         for (int attempt = 0; attempt < 2; attempt++) {
             Path output = migrations.resolve("cli-validation-" + attempt + ".log");
