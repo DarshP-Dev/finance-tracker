@@ -1,106 +1,149 @@
-# Authentication Phase 1 — production V2 and application release checkpoint
+# Authentication Phase 1 — completed production release
 
-Recorded October 14, 2026 (America/Toronto). Production Flyway V2 adoption is
-complete. Publishing the reviewed source to Git is approved; unpausing Vercel,
-deploying/promoting the application and restoring public access or cron are
-separate approval stages. No production data operation is part of Git publication.
+**Complete as of October 15, 2026 (America/Toronto).** Implementation, local
+verification, production Flyway V2 adoption, deployment and promotion are complete.
+The operator confirmed the live website passes manual authentication testing and
+existing financial features remain functional. Authentication Phase 2 is the next
+development milestone; it has not been started.
 
-## Completed database operation
+## Implementation and verification
 
-The separately approved operator execution used the pinned, reviewed artifact
-with exactly V1 and V2 resources. Read-only preflight confirmed the production
-identity, the available fresh manual snapshot, maintenance controls, canonical
-V1 schema, successful BASELINE 1 and only V2 pending. No competing database
-sessions were present. Credentials, endpoint identifiers, captures, hashes,
-sequence values, screenshots and raw logs remain private under ignored `.local/`.
+The complete backend, frontend, Flyway V2, regression tests and original reports
+are included in commit `c9e5677c9e9a6f752d568b0c2dfa3856c8ab9801`.
 
-- Exactly one SQL migration, V2, was applied successfully. BASELINE 1 remained
-  unchanged; V1 schema-creation SQL was not executed or edited.
-- Strict shared CLI/startup history and checksum validation passed, with no
-  pending, failed, missing or unexpected migrations.
-- All 168 application schema signatures match: 147 preserved V1 signatures and
-  21 V2 additions. Refresh sessions have eight columns, seven validated
+Implemented behavior includes hashed opaque refresh-token storage, absolute
+session expiry, refresh rotation and replay-family revocation, memory-only access
+JWTs, automatic renewal, session restoration, CSRF protection, secure cookies,
+refresh-session logout and cross-tab logout. Production uses same-origin
+`/api` routing, Secure/HttpOnly/SameSite=Lax refresh cookies and exact-origin CORS.
+
+The existing verified baseline is **540 backend tests and 17 frontend tests
+passing**, plus clean frontend lint, TypeScript checks and production build.
+Documentation finalization reuses those results; no application code change or
+unresolved reported authentication failure requires a repeated full-suite run.
+The [local review](authentication-phase-1-final-review.md) retains its dated test
+inventory and distinguishes reported browser results from unreported scenarios.
+
+## Completed production database adoption
+
+The approved operator execution used a pinned artifact containing exactly V1 and
+V2. Preflight confirmed the intended production database, a fresh available manual
+snapshot, canonical V1 schema, successful BASELINE 1 and only V2 pending.
+
+- V2 was applied once successfully; BASELINE 1 remained unchanged. V1 SQL was not
+  executed or edited.
+- Strict history/checksum validation passed with no pending, failed, missing or
+  unexpected migrations.
+- All **168 application schema signatures** matched: 147 preserved V1 signatures
+  and 21 V2 additions. Refresh sessions had eight columns, seven validated
   constraints, five valid indexes and zero rows at the preservation checkpoint.
-- All nine original table counts/full-row hashes and all eight sequence states
-  matched the maintenance freeze. No financial records changed.
-- Migration and validation logs contained no warnings or errors. No repair,
-  clean, repeated baseline, reconciliation or financial DML was run.
+- All nine existing table counts/full-row hashes and all eight sequence states
+  matched the maintenance freeze. No financial records changed during adoption.
+- No repair, clean, repeated baseline, reconciliation or financial DML was run.
 
-The fresh snapshot was confirmed available with its restore action enabled and
-expiration Never. That specific snapshot was not restore-tested; the operator
-explicitly accepted this limited beta risk using the previously verified recovery
-workflow. Console listed only the fresh snapshot; do not assume the earlier
-snapshot is still available. No snapshot restore or switch-over was performed.
+The fresh pre-authentication snapshot was confirmed available and displayed as
+never expiring. That particular snapshot was not restore-tested; the operator
+accepted this limited beta risk using the previously verified recovery workflow.
+This is historical backup evidence, not a claim about current retention or a
+new recovery rehearsal. No snapshot restore or switch-over was performed.
 
-## Reviewed application and configuration
+## Deployment and promotion outcome
 
-The tested backend/frontend and migration bytes were unchanged during production
-adoption. The verified local baseline remains 540 backend tests and 17 frontend
-tests passing, plus clean frontend lint/build. No full-suite rerun is needed for
-documentation updates alone. Existing reports distinguish operator-confirmed
-manual tests from tests not individually reported.
+Both services were built from the verified `c9e5677` source and staged together
+with Vercel CLI 64.1.0 using `--prod --skip-domain`.
 
-Spring Boot uses validation-only Flyway and Hibernate. Remote startup migration
-mode is rejected. Preserve the existing database/JWT secrets; V2 introduces no
-new external provider or credential. The repository's Vercel services deploy
-Next.js/React and the backend together, with relative same-origin `/api` routing.
+- Deployment: `dpl_ERoZPTQFrzq4rRJg7nDHgNQMqcsq`.
+- Frontend compilation and backend build passed. Spring Boot started, connected
+  to PostgreSQL, completed Flyway validation and initialized Hibernate/JPA.
+- Startup logs contained no runtime errors or migration execution. Build notices
+  concerned npm configuration/install scripts and existing unchecked test code.
+- Read-only postflight again matched all 168 signatures, nine existing table
+  fingerprints, eight sequence states and unchanged BASELINE 1/SQL V2 history.
+- With separate approval, the existing Ready deployment was promoted to
+  **Current for Production while the project remained paused**. No rebuild,
+  redeploy or temporary resume was needed for promotion.
 
-Production configuration was checked privately: `DB_MIGRATION_MODE=validate`,
-`RECURRING_SCHEDULER_ENABLED=false`, explicit Secure refresh cookies, SameSite=Lax
-and the exact canonical HTTPS CORS origin. The three new nonsecret cookie/CORS
-settings were approved, saved to Production only and verified. Normal new token
-lifetimes are PT15M/P30D from the reviewed code; there is no Production frontend
-API-base override or linked shared variable. HTTPS cookie/CSRF behavior still
-requires the protected smoke test against the newly deployed application.
+The canonical production domain and generated project alias resolved to this
+corrected deployment after promotion. The git-main branch alias remained on the
+previous deployment at that check and was intentionally left unchanged. Use the
+canonical hostname for beta testing. A later Git push can update branch aliases;
+inspect their actual assignments rather than assuming all generated URLs match.
 
-`DB_DDL_AUTO` is obsolete for this runtime. Do not replace the hardcoded Hibernate
-validate setting or introduce higher-precedence unsafe overrides. Vercel cron
-and Spring scheduling remain distinct controls; leave both disabled for rollout.
+The earlier alias stop was explained by Vercel metadata: custom-domain assignment
+was disabled, while `automaticAliases` still included the generated CLI project
+URL. That URL was not a separately configured production domain. See Vercel's
+[generated URL reference](https://vercel.com/docs/deployments/generated-urls) and
+[staged production promotion procedure](https://vercel.com/docs/deployments/promoting-a-deployment).
+No individual alias repair was necessary to promote the canonical application.
 
-## Protected rollout requiring separate approval
+During the controlled rollout, All Deployments protection remained enabled,
+Vercel cron was off and `RECURRING_SCHEDULER_ENABLED=false`. Flyway and Hibernate
+remained validation-only. These are dated rollout observations; they do not
+assert the site's present pause/protection/cron switches after operator testing.
+Milestone documentation does not change those operational settings.
 
-The project remains paused, Vercel Cron Jobs disabled and All Deployments Vercel
-Authentication active. Anonymous requests to the canonical/current deployment
-aliases redirected to Vercel authentication before pausing. A paused 503 masks
-that gate, so saved settings and the prior check must not be confused with a
-new anonymous challenge test while paused.
+## Live manual testing and evidence boundaries
 
-Automatic production-domain assignment is disabled. This was observed and left
-unchanged. Neither a successful Git push nor a Ready deployment proves that the
-canonical domain uses the reviewed application commit. A paused project has
-previously blocked new builds; observe the actual post-push result rather than
-assuming it will build or retry automatically.
+After promotion, the operator explicitly reported that Authentication Phase 1 is
+complete and working on the live Vercel website, manual production authentication
+tests passed and existing financial features remain functional. Reported working
+flows include secure refresh sessions/rotation, automatic access renewal, reload
+persistence, logout and cross-tab logout.
 
-If a paused build is blocked, the proposed separately approved sequence is:
+These are operator-confirmed live results, separate from the agent-observed
+build, startup, schema and preservation evidence. Registration, password changes,
+offline logout recovery and every individual cookie attribute were not separately
+itemized in the final production report; do not imply an exhaustive independent
+browser audit. No authentication bug remains reported.
 
-1. Reconfirm All Deployments protection, no relevant exceptions/bypasses, cron
-   off, Spring scheduler false and validation-only settings. Keep the source
-   commit fixed and verify Production-scoped configuration is selected.
-2. Temporarily resume the protected project, immediately check anonymous access
-   still reaches Vercel authentication, and deploy/redeploy that exact commit.
-   Avoid opening the old application: the V1-only backend can reject V2 history.
-3. Require both services to build successfully and the backend to complete
-   database connection, strict BASELINE 1/V2 validation and Hibernate validation.
-   Inspect the Git SHA, Ready state and startup logs; do not rely on frontend
-   readiness alone. Stop and re-pause on an unexpected failure.
-4. With explicit promotion approval, promote that same deployment to Production.
-   Confirm the canonical domain and backend/frontend services use its SHA.
-   Keep All Deployments protection on and cron off throughout.
-5. Run only the approved smoke checks from the
-   [deployment guide](authentication-production-deployment.md). Login, refresh,
-   logout and registration intentionally write session/account state, so include
-   them explicitly in the smoke-test approval. Do not shorten Production TTLs.
-6. Pause again after protected verification unless separately approved otherwise.
-   Restoring public access and recurring processing requires separate approval;
-   do not enable the Spring scheduler alongside Vercel cron.
+Normal approved login/refresh/logout operations legitimately change session
+records. Preservation hashes describe the frozen migration/deployment checkpoint,
+not an assertion that live user activity leaves the database permanently unchanged.
 
-No step above is authorized merely by committing this document. If protection
-cannot be established or a deployment fails validation, stop rather than expose
-the incompatible old application. No migration needs to be reapplied to activate
-the release. Prefer a V2-aware forward fix for application failures; reverting
-only to a V1-only backend is unsafe. Database recovery needs separate approval.
+## Known limitations and proposed Authentication Phase 2 follow-ups
 
-Existing beta users may need to reload old tabs and sign in once. Legacy browser
-storage does not create refresh sessions. Logout revokes refresh sessions while
-already-issued access JWTs remain valid until their own expiry. These documented
-limitations and the known recovery risk remain unchanged by Git publication.
+1. **Access-token revocation:** logout/password changes revoke refresh families;
+   already-issued access JWTs remain valid until their own expiry (normally
+   15 minutes). Evaluate whether immediate revocation is needed before adding a
+   denylist or per-request session checks.
+2. **Concurrent/lost refresh responses:** Web Locks serialize supported browser
+   tabs. Unsupported browsers, rotation response loss or retries can require a
+   fresh sign-in under strict reuse detection. Add focused browser/network cases
+   before considering any change to replay handling.
+3. **Offline logout:** server revocation cannot be guaranteed without connectivity;
+   the UI reports failure and offers Retry logout. Expand automated/browser
+   coverage for outage recovery.
+4. **Abuse controls:** add scoped authentication rate limiting and review generic
+   failure messages and sanitized security logging. HttpOnly cookies and
+   memory-only JWTs do not eliminate XSS risk.
+5. **Session lifecycle:** design bounded cleanup after absolute family expiry,
+   retaining consumed-token evidence until replay detection no longer needs it.
+   Consider session visibility and per-session revocation if included in Phase 2.
+6. **Additional scenarios:** explicitly cover registration, password-change
+   revocation, denied access and browser compatibility when defining the next
+   phase. Keep its scope separate from this completed release.
+
+Existing beta users may need one reload/fresh login after upgrading older tabs;
+legacy localStorage tokens do not establish refresh sessions. Keep normal
+PT15M/P30D lifetimes in production and restore normal local lifetimes after
+short-expiry testing. Local `start-dev.ps1` still defaults to migrate; explicitly
+select validate during ordinary development when automatic adoption is unwanted.
+
+No new feature, scheduler, provider, schema or behavior change is part of this
+milestone closure. Future database operations need a fresh preflight and their own
+approval. Do not repeat V2 or delete migration/session history to roll back.
+Prefer a compatible V2-aware forward fix; database restore and a matching older
+application would require explicit recovery approval.
+
+## Git and private evidence
+
+Final milestone publication is documentation-only. Implementation source, tests,
+Vercel configuration and V1/V2 migration bytes remain unchanged from `c9e5677`.
+A documentation push may create another Vercel deployment; Ready alone does not
+prove promotion or canonical-domain assignment. Observe the Git SHA and aliases,
+and do not manually promote, redeploy or change settings during finalization.
+
+Credentials, cookies, JWTs, CSRF values, provider keys, private database captures,
+hashes, sequence values, backups and raw logs stay outside Git in ignored local
+storage. This public report contains no financial records or private database
+connection details.

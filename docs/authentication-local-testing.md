@@ -4,7 +4,9 @@ Windows command examples use `C:\path\to\FinanceTracker`; substitute your checko
 
 This is a local-only checklist. Do not use a production URL, change Vercel, rerun
 baseline, rerun V2, repair/clean history, or delete existing financial records.
-Current Git changes remain uncommitted.
+The implementation and this local record are committed in `c9e5677`. Authentication
+Phase 1 is now complete in production; see the [final release record](authentication-production-release-checkpoint.md).
+The dated observations below describe the earlier local testing stage.
 
 ## Read-only setup verification, October 14, 2026
 
@@ -230,5 +232,5 @@ these checks. Automated coverage exists for the unreported browser scenarios;
 that does not establish an observed browser pass. No authentication bug was
 reported in this integration session and no authentication source changed during
 its final review, so no further test suite was run. See
-[the final review](authentication-phase-1-final-review.md) for limitations and
-the separate-approval deployment sequence.
+[the final review](authentication-phase-1-final-review.md) for local evidence and
+the final release record linked above for production completion and follow-ups.

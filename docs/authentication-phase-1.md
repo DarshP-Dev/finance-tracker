@@ -1,10 +1,12 @@
-# Authentication Phase 1 — local implementation and review
+# Authentication Phase 1 — completed implementation and release
 
 Windows command examples use `C:\path\to\FinanceTracker`; substitute your checkout path.
 
-Status: implementation and local verification are complete; production Flyway V2
-has subsequently been adopted and verified. Protected application activation is
-still a separate stage. See the [production release checkpoint](authentication-production-release-checkpoint.md).
+**Complete as of October 15, 2026:** implementation `c9e5677`, local verification,
+production Flyway V2 adoption, deployment and promotion are complete. The operator
+confirmed live production authentication tests passed and financial features work.
+See the [production release checkpoint](authentication-production-release-checkpoint.md)
+for the final evidence, limitations and proposed Phase 2 follow-ups.
 The implementation/testing evidence below describes the earlier local work;
 no production action occurred during that initial implementation stage.
 Automated database verification used newly created, guarded disposable PostgreSQL
@@ -18,7 +20,8 @@ migrate/baseline command was run during authentication implementation or the
 initial integration inspection. An already running development backend can apply
 V2 because start-dev.ps1 defaults to migrate; the exact initiating event has not
 yet been confirmed. Do not apply or baseline V2 again. Use strict history validation
-and a V1-plus-V2 schema comparison for this database. No production action occurred.
+and a V1-plus-V2 schema comparison for this database. No production action occurred
+during that local stage; subsequent approved production work is recorded separately.
 
 ## Architecture and behavior
 
@@ -227,10 +230,16 @@ was involved.
    transaction, budget, investment, analytics and recurring UI still behaves normally.
 
 Browser automation was not performed against the live app. Real HTTP/backend
-tests and frontend adapter tests are automated; visual/browser checks above remain
-operator actions.
+tests and frontend adapter tests are automated. The operator subsequently reported
+successful live production authentication testing; this does not claim every
+optional browser checklist item was individually observed by the agent.
 
-## Safe future production deployment — separate approval required
+## Original production deployment checklist — historical reference
+
+Production V2, deployment and promotion have completed. Do not repeat this
+migration checklist against the adopted database. The final release record linked
+above supersedes its original pending status; future production operations still
+require their own authorization.
 
 1. Review this diff and approve the release separately. Keep public access paused,
    Vercel Cron Jobs disabled and RECURRING_SCHEDULER_ENABLED=false during rollout.

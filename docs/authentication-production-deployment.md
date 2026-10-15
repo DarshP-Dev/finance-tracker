@@ -1,14 +1,16 @@
-# Authentication Phase 1 — production release preparation
+# Authentication Phase 1 — production release procedure and completed adoption
 
 Windows command examples use `C:\path\to\FinanceTracker`; substitute your checkout path.
 
-Prepared October 14, 2026. **Production V2 adoption is now complete and verified.**
+Prepared October 14, 2026; completion recorded October 15, 2026.
+**Production V2 adoption, application deployment and promotion are complete.**
+The operator confirmed live authentication tests passed and financial features work.
 See the [production release checkpoint](authentication-production-release-checkpoint.md)
-for the execution result and the remaining protected application rollout.
+for the final result, evidence boundaries and remaining limitations.
 The pre-V2 investigation, backup and migration commands below are retained as
 operator reference; they must not be repeated against the adopted production
-database. Application deployment, promotion and resumption still require their
-own approval. Documentation is not execution authorization.
+database. Future deployments, promotion, resumption and other operational changes
+still require their own approval. Documentation is not execution authorization.
 
 ## Reviewed release and compatibility
 
@@ -18,14 +20,14 @@ Flyway/Hibernate validation, 168 matching schema signatures and the reported
 manual authentication results. Those results are reused; no runtime fix or
 unresolved local failure requires another full-suite run.
 
-The uncommitted changes belong to authentication: session storage/services,
+Commit `c9e5677` contains the authentication changes: session storage/services,
 JWT identity, cookies/CSRF/CORS, memory-only frontend sessions, migration safety,
 regression tests and reports. Existing financial integration tests adapt to the
 new unauthenticated 401 response. V1 SQL, its manifest, Vercel routing, Docker
 startup and the shared baseline-validation implementation are unchanged.
 Private credentials, captures, backups and browser-testing overrides remain
-under ignored `.local/` directories. Final staging and a secret scan are still
-required before an approved commit; do not stage private operator archives.
+under ignored `.local/` directories. Any later milestone commit must also be
+reviewed and scanned; do not stage private operator archives.
 
 `V2__add_refresh_token_sessions.sql` is additive. It creates one table with eight
 columns, seven constraints (including primary/unique/foreign keys), and five
@@ -38,9 +40,10 @@ users when sessions are deleted. Table creation can briefly acquire locks on
 
 The disposable migration test covers explicit BASELINE 1 -> V2, unchanged V1
 schema, all nine existing table fingerprints and eight sequence states, and
-validation-only startup. Compatibility with the **current** production database
-remains conditional on the fresh preflight below. Historical production evidence
-is not a live preflight. Do not repeat V1 reconciliation or baseline registration.
+validation-only startup. Production compatibility and preservation were verified
+during the approved V2 operation and release. The preflight below is historical
+procedure, not a request to repeat adoption. Historical production evidence is not
+a future live preflight. Do not repeat V1 reconciliation or baseline registration.
 
 ## Configuration for this Vercel project
 
@@ -90,9 +93,10 @@ an actual cross-site deployment requirement.
 Review variable **names/scopes** privately in Vercel. Production secrets must
 not be exposed in public frontend variables or newly assigned to Preview.
 Historical deployments retain their own configuration; editing current scopes
-does not prove that retained deployments cannot access production. Current live
-origin, overrides, protection, deployment identities and writer status have not
-been independently rechecked in this preparation.
+does not prove that retained deployments cannot access production. The initial
+preparation had not yet independently rechecked live origin, overrides,
+protection, deployment identities or writer status. The final release checkpoint
+records the subsequent approved checks and successful release.
 
 ## Short beta maintenance sequence
 
@@ -410,9 +414,9 @@ clean, rebaseline, or automatically finalize a Neon restore to force rollback.
 
 ## Original prerequisites and approval boundaries
 
-Production V2, its preflight and its preservation checks have been completed.
-The following original checklist remains historical context; use the release
-checkpoint for the remaining source publication and application activation steps.
+Production V2, its preservation checks, deployment, promotion and operator-confirmed
+live testing have completed. The following original checklist remains historical
+context; use the release checkpoint for the final outcome and future follow-ups.
 
 - Privately reconfirm current production identity, deployment SHA, canonical
   origin(s), effective environment overrides/scopes and protection coverage.
@@ -421,10 +425,11 @@ checkpoint for the remaining source publication and application activation steps
 - Obtain a fresh usable backup, or approve/verify the dump fallback if quota blocks
   snapshots. Retain the previous recovery point; record dated preservation captures.
 - Review/freeze the release artifact and pending migration list, then explicitly
-  approve production V2 execution. Current preparation has not contacted Neon.
+  approve production V2 execution. The original preparation itself made no writes.
 - Separately approve secret-clean staging/commit/push and the protected deployment
   sequence, including temporary resume if required and intentional smoke writes.
 - Approve final public access and Vercel cron resumption only after release checks.
 
 No new migration, application code change, infrastructure account or role-fencing
-system was added during preparation. The live application has not been changed.
+system is part of this documentation finalization. The completed release uses the
+implementation in `c9e5677`; no live configuration or financial data is changed here.

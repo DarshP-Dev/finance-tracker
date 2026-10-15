@@ -44,6 +44,27 @@ Open http://localhost:3000. Keep both terminals running: the dashboard needs the
 backend on port 8080. If the backend was stopped, start it and click **Retry** on
 the dashboard. Sign in again if your previous session has expired.
 
+## Authentication milestone
+
+| Phase | Status |
+| --- | --- |
+| Authentication Phase 1 | Complete: implementation, production Flyway V2 adoption, deployment, promotion and operator-confirmed live testing |
+| Authentication Phase 2 | Next milestone; scope and implementation require a separate task |
+
+The Phase 1 implementation is committed in `c9e5677`. Access JWTs stay in memory;
+opaque refresh tokens use HttpOnly cookies, rotate on refresh and are stored only
+as hashes on the backend. Session restoration, automatic renewal, server-side
+refresh-session revocation and cross-tab logout are implemented. Production uses
+Secure/SameSite=Lax cookies, CSRF protection and same-origin `/api` routing.
+
+The operator confirmed live authentication tests passed and existing financial
+features remain functional. The existing verification baseline is 540 backend
+tests, 17 frontend tests, frontend lint and build passing; documentation finalization
+does not rerun those suites. See the [completed production release record](docs/authentication-production-release-checkpoint.md)
+for deployment evidence, the remaining branch-alias caveat, known limitations and
+proposed Phase 2 follow-ups. Logout revokes refresh sessions; an already-issued
+access JWT remains valid until its own expiry.
+
 ## Recurring transactions
 
 Authenticated requests to `/api/recurring-transactions` can create, list, read,

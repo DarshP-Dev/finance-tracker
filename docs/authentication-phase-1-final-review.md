@@ -6,8 +6,10 @@ Review date: October 14, 2026. Local implementation and essential integration
 checks are complete. This document records the local review, during which no Neon
 production connection, production migration, Vercel setting change, commit, push
 or deployment occurred. The subsequent approved production V2 adoption is recorded
-in the [production release checkpoint](authentication-production-release-checkpoint.md);
-application activation remains a separate decision.
+in the [production release checkpoint](authentication-production-release-checkpoint.md).
+Phase 1 was subsequently deployed, promoted and confirmed working in live manual
+testing by the operator on October 15, 2026. The local evidence below remains a
+historical record; it is not the current production release status.
 
 ## Confirmed behavior
 
@@ -27,8 +29,10 @@ error/logout-retry handling, browser unauthorized-access checks and direct stora
 inspection were not individually reported. They remain **unverified manually**.
 Relevant backend/frontend automated coverage passed; do not substitute that for
 an observed browser result. No repetition of completed operator tests is required.
-Production HTTPS cookies and deployed-origin behavior remain future deployment
-smoke checks; they have not been tested against production in this task.
+Production HTTPS cookies and deployed-origin behavior were outside this local
+review. Subsequent operator-confirmed live authentication results are recorded in
+the production release checkpoint; no claim is made that every optional browser
+scenario or cookie attribute was independently inspected in production.
 
 ## Database outcome and evidence limits
 
@@ -117,7 +121,10 @@ For ordinary local startup afterward, use DB_MIGRATION_MODE=validate with
 start-dev.ps1 and confirm the datasource remains local. Reenable providers or
 scheduled processing only deliberately; no production environment is changed.
 
-## Deployment requirements — not authorized/executed here
+## Original deployment requirements — historical local review
+
+These steps describe the release requirements before production adoption. V2,
+deployment and promotion have since completed; do not repeat the migration step.
 
 1. Review source and credentials exclusions; obtain separate commit/push/release
    approval. A push to main can trigger Vercel, so prevent premature deployment.
